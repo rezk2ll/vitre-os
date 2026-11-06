@@ -251,6 +251,100 @@ cmd_mem:
     add rsp, 8
     ret
 
+; name: cmd_uptime
+; in:   rdi = arguments (ignored)
+; out:  seconds and milliseconds since the PIT started
+; clobbers: caller-saved
+cmd_uptime:
+    push rbx
+    lea rdi, [rel shell_msg_up]
+    call kputs
+    mov rax, [rel timer_ticks]
+    xor edx, edx
+    mov ecx, 1000
+    div rcx
+    mov rbx, rdx
+    mov rdi, rax
+    call [rel jt_kput_dec]
+    mov edi, '.'
+    call kputc
+    mov rax, rbx                    ; three digits of milliseconds
+    mov ecx, 100
+    xor edx, edx
+    div ecx
+    mov rbx, rdx
+    lea edi, [rax + '0']
+    call kputc
+    mov eax, ebx
+    mov ecx, 10
+    xor edx, edx
+    div ecx
+    mov ebx, edx
+    lea edi, [rax + '0']
+    call kputc
+    lea edi, [rbx + '0']
+    call kputc
+    lea rdi, [rel shell_msg_seconds]
+    call kputs
+    pop rbx
+    ret
+
+; name: cmd_layout
+; in:   rdi = "azerty", "qwerty" or empty
+; out:  keyboard layout switched, or the current one printed
+; clobbers: caller-saved
+cmd_layout:
+    push rbx
+    mov rbx, rdi
+    cmp byte [rbx], 0
+    je .show
+    lea rsi, [rel shell_azerty]
+    call str_eq
+    jne .not_azerty
+    mov byte [rel kbd_layout], KBD_LAYOUT_AZERTY
+    jmp .show
+.not_azerty:
+    mov rdi, rbx
+    lea rsi, [rel shell_qwerty]
+    call str_eq
+    jne .usage
+    mov byte [rel kbd_layout], KBD_LAYOUT_QWERTY
+.show:
+    lea rdi, [rel shell_msg_layout]
+    call kputs
+    lea rdi, [rel shell_azerty]
+    cmp byte [rel kbd_layout], KBD_LAYOUT_QWERTY
+    jne .print
+    lea rdi, [rel shell_qwerty]
+.print:
+    call kputs
+    mov edi, 10
+    call kputc
+    pop rbx
+    ret
+.usage:
+    lea rdi, [rel shell_msg_layout_usage]
+    call kputs
+    pop rbx
+    ret
+
+; name: cmd_reboot
+; in:   rdi = arguments (ignored)
+; out:  does not return: pulses the 8042 reset line, then triple faults
+; clobbers: everything
+cmd_reboot:
+    lea rdi, [rel shell_msg_reboot]
+    call kputs
+    cli
+.wait:
+    in al, 0x64
+    test al, 2
+    jnz .wait
+    mov al, 0xfe
+    out 0x64, al
+    lidt [rel shell_null_idt]       ; still here: any interrupt now triple faults
+    int3
+
 ; name: cmd_tasks
 ; in:   rdi = arguments (ignored)
 ; out:  the task table
@@ -264,7 +358,13 @@ shell_commands:
     shell_command "mem", cmd_mem, "free pages and heap"
     shell_command "tasks", cmd_tasks, "list tasks"
     shell_command "syms", sym_dump, "dump the symbol table"
+    shell_command "uptime", cmd_uptime, "time since boot"
+    shell_command "layout", cmd_layout, "keyboard layout: layout [azerty|qwerty]"
+    shell_command "reboot", cmd_reboot, "restart the machine"
     dq 0
+
+shell_null_idt dw 0
+               dq 0
 
 shell_msg_ready  db "[shell] ready, type help", 10, 0
 shell_prompt     db "vitre> ", 0
@@ -275,6 +375,13 @@ shell_msg_pages  db "pages free ", 0
 shell_msg_of     db " of ", 0
 shell_msg_heap   db ", heap free ", 0
 shell_msg_bytes  db " bytes", 10, 0
+shell_msg_up     db "up ", 0
+shell_msg_seconds db " s", 10, 0
+shell_msg_layout db "layout ", 0
+shell_msg_layout_usage db "usage: layout [azerty|qwerty]", 10, 0
+shell_azerty     db "azerty", 0
+shell_qwerty     db "qwerty", 0
+shell_msg_reboot db "[shell] rebooting", 10, 0
 
 section .bss
 shell_line resb SHELL_LINE_MAX
