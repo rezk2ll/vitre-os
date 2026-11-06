@@ -49,6 +49,8 @@ kernel_entry:
     mov edi, 10
     call kputc
 
+    call pmm_init
+    call pmm_log
     call idt_init
     call pic_init
     call pit_init
@@ -120,6 +122,7 @@ selftest_pit:
 %include "glass/font.asm"
 %include "glass/console.asm"
 %include "drivers/keyboard.asm"
+%include "kernel/pmm.asm"
 
 msg_long_mode  db "[boot] long mode ok", 10, 0
 msg_image_ok   db "[kernel] image ok", 10, 0
@@ -130,7 +133,6 @@ msg_echo       db "[kbd] echo ready", 10, 0
 msg_ticks      db "[timer] ticks=", 0
 test_pit       db "test=pit", 0
 test_ud        db "test=ud", 0
-
 KERNEL_END_MAGIC equ 0x444e454552544956       ; "VITREEND"
 align 8
 kernel_end_magic dq KERNEL_END_MAGIC
