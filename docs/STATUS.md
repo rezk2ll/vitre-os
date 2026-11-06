@@ -2,7 +2,7 @@
 
 ## Current milestone
 
-M5 done. Next: M6, jump table, symbol table, embedded source and build generator.
+M6 done. Next: M7, the shell.
 
 ## Milestones
 
@@ -13,6 +13,7 @@ M5 done. Next: M6, jump table, symbol table, embedded source and build generator
 - M4: done. Bitmap page allocator from E820, first-fit kernel heap (`kmalloc`/`kfree`) with coalescing. `test=mem` stamps 256 page runs to prove no overlap, then runs 4000 random heap operations with content checks and verifies nothing leaks.
 - Keyboard layouts: AZERTY by default with AltGr and Latin-1 accented characters, `kbd=qwerty` for US.
 - M5: done. Preemptive round-robin scheduler for kernel tasks (10 ms slices, `int 0x40` yield). `test=tasks` runs two tasks whose output interleaves, then lists the task table.
+- M6: done. `tools/gen.py` builds the jump table, symbol table and source area from function headers. Patchable functions are only called through `jt_*` slots. The source area sits on disk at LBA 2048 and is read at boot with ATA PIO. `test=syms` dumps both and the test checks them against the NASM map.
 
 ## Stubs
 
@@ -22,4 +23,5 @@ M5 done. Next: M6, jump table, symbol table, embedded source and build generator
 
 - stage1: 512 bytes
 - stage2: 16 KiB slot (code is under 1 KiB)
-- kernel: 11568 bytes (4 KiB interrupt stubs and table, 1520 bytes font)
+- kernel: 20496 bytes (4 KiB interrupt stubs and table, 3.5 KiB font, 7 KiB symbol table)
+- source area: 16777 bytes

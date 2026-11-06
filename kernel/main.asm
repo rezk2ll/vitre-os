@@ -56,6 +56,7 @@ kernel_entry:
     call pic_init
     call pit_init
     call sched_init
+    call src_load
     call kbd_init
     sti
     lea rdi, [rel msg_interrupts]
@@ -145,6 +146,7 @@ selftest_pit:
 %include "kernel/memtest.asm"
 %include "kernel/sched.asm"
 %include "kernel/tasktest.asm"
+%include "drivers/ata.asm"
 %include "kernel/symbols.asm"
 
 msg_long_mode  db "[boot] long mode ok", 10, 0

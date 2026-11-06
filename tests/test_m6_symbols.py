@@ -12,7 +12,8 @@ def nasm_map():
 
 def test_symbol_dump_matches_map():
     with Vm("m6_syms", cmdline="test=syms") as vm:
-        vm.wait_for(r"\[sym\] sym_put_signed ")
+        vm.wait_for(r"\[src\] source area loaded, \d+ bytes")
+        vm.wait_for(r"\[src\] sched_list: ")
         serial = vm.serial()
     syms = re.findall(r"\[sym\] (\w+) ([0-9a-f]{16}) (\d+) (-?\d+) (-?\d+)", serial)
     if len(syms) < 50:
@@ -29,3 +30,6 @@ def test_symbol_dump_matches_map():
     patchable = {name for name, _, _, slot, _ in syms if slot != "-1"}
     if patchable != {"kput_dec", "fb_log_mode", "pmm_log", "sched_list"}:
         raise TestFailure(f"patchable: {patchable}")
+    for name in patchable:
+        if not re.search(rf"\[src\] {name}: ; name: {name}\r\n", serial):
+            raise TestFailure(f"source area does not start {name} at its header")
