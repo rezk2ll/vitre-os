@@ -30,8 +30,8 @@ pit_irq:
     push rdi
     xor edi, edi
     call pic_eoi
-    pop rax
-    ret
+    pop rdi
+    jmp sched_tick
 
 ; name: timer_sleep_ms
 ; in:   rdi = milliseconds (interrupts must be on)

@@ -60,3 +60,7 @@ A bitmap with one bit per 4 KiB page below 4 GiB (128 KiB of .bss), built from t
 ## D14. Keyboard layouts
 
 AZERTY (French) is the default layout, QWERTY (US) is chosen with `kbd=qwerty` on the command line. Each layout has a plain, a Shift and an AltGr map indexed by scancode. Non-ASCII characters are Latin-1 key codes (0xa0 to 0xff), so every character stays one byte; the font covers the Latin-1 characters on the French keyboard and draws '?' for the rest. Dead keys are not composed: `^` and `¨` type themselves.
+
+## D15. Scheduler
+
+Kernel tasks only, round-robin, preempted by the PIT every 10 ms. A task is a slot in a fixed table of 32 with a 16 KiB stack from the page allocator; its saved state is the interrupt frame on its own stack, so `task_create` builds a fake frame and a switch is returning another frame (D6). `int 0x40` yields. A task ends by returning from its entry; its stack is freed by the next switch that runs on another stack. No FPU/SSE state is saved: kernel code does not use those registers. `kputs` runs with interrupts off so log lines from tasks never mix.
