@@ -14,7 +14,25 @@
 - 0x20000: kernel load bounce buffer (32 KiB)
 - 0x70000: page tables (PML4, PDPT, 4 page directories)
 - 0x90000: initial kernel stack top
-- 0x100000: kernel image
+- 0x100000: kernel image, then its .bss (cleared at entry)
+
+## Interrupts
+
+Every vector has a stub that pushes an error code (a zero when the CPU pushes none) and the vector number, then jumps to `isr_common`. `isr_common` saves all general registers and calls the handler registered for the vector with `rdi` = frame. The handler returns in `rax` the frame to resume, so a handler can switch to another task by returning that task's saved frame.
+
+Frame layout, from the lowest address: r15, r14, r13, r12, r11, r10, r9, r8, rbp, rdi, rsi, rdx, rcx, rbx, rax, vector, error, then the CPU part (rip, cs, rflags, rsp, ss). Offsets are the `INT_FRAME_*` constants in `kernel/idt.asm`.
+
+- Vectors 0 to 31: CPU exceptions. Without a registered handler, `exception_fatal` dumps the frame and halts.
+- Vectors 32 to 47: PIC IRQ 0 to 15. IRQ 0 is the PIT at 1000 Hz, counting `timer_ticks`.
+
+```mermaid
+flowchart LR
+  cpu[CPU] --> stub[isr_stub_N]
+  stub --> common[isr_common: save registers]
+  common --> handler[isr_handlers N]
+  handler -->|rax = frame to resume| common
+  common --> iret[restore registers, iretq]
+```
 
 ## Boot flow
 

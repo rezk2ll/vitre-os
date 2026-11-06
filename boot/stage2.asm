@@ -311,7 +311,4 @@ msg_cpu    db "[boot] CPU has no long mode", 13, 10, 0
 msg_a20    db "[boot] A20 failed", 13, 10, 0
 msg_disk   db "[boot] disk read failed", 13, 10, 0
 
-%if ($ - $$) > STAGE2_SECTORS * 512
-%error "stage2 too large"
-%endif
-times STAGE2_SECTORS * 512 - ($ - $$) db 0
+times STAGE2_SECTORS * 512 - ($ - $$) db 0     ; negative = stage 2 too large

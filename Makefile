@@ -15,7 +15,9 @@ all: $(IMG)
 $(BUILD):
 	mkdir -p $@
 
-ASM = $(NASM) -f bin -I. -MD $@.d -MP
+# NASM's -MD drops %include'd files when combined with -o, so the dependency
+# list comes from a separate -M pass.
+ASM = $(NASM) -f bin -I. -M -MP -MT $@ $< > $@.d && $(NASM) -f bin -I.
 
 layout = $(shell awk '$$1 == "$(1)" { print $$3 }' boot/layout.inc)
 
