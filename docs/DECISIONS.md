@@ -44,3 +44,7 @@ Stage 2 picks a VBE linear framebuffer mode at 1024x768, 32 bpp, falling back to
 ## D10. Font
 
 The 8x16 font in `glass/font.asm` is an original design covering ASCII 32 to 126, one glyph per line of `db`. Glyphs sit in rows 2 to 10, with descenders down to row 12. Bold and italic for the browser will be derived at draw time (bit smear, row shear) instead of shipping more glyph tables.
+
+## D11. Screen layout on the 8x16 grid
+
+Consoles and, later, Glass panes put text only on the 8x16 character grid of the screen. Tests then read any screen region as text by matching each cell against `build/font.bin`, which is `glass/font.asm` assembled on its own. A cell's top-left pixel is its background, since every glyph leaves row 0 empty. Colours can change freely without breaking tests.

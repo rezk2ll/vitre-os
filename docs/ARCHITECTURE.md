@@ -61,3 +61,9 @@ flowchart LR
   qemu -->|COM1 stdio| vm
   vm <-->|QMP socket| qemu
 ```
+
+## Screen
+
+- `drivers/fb.asm`: framebuffer primitives (fill, glyph, scroll a rectangle), 32 bpp `0x00RRGGBB`.
+- `glass/console.asm`: a console is a struct (origin, size in cells, cursor, colours) drawing on the 8x16 grid. The kernel log owns a full-screen one; Glass panes will each own one.
+- `kputc` writes every byte to COM1 and, once the framebuffer is up, to the kernel console.

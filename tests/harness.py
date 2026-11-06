@@ -156,6 +156,31 @@ class Vm:
         self.qmp("screendump", filename=path)
         return read_ppm(path)
 
+    def screen_text(self):
+        """The screen read back as text lines on the 8x16 character grid."""
+        return screen_to_text(*self.screendump())
+
+    def wait_screen(self, pattern, timeout=10):
+        """Wait until regex `pattern` matches the screen text."""
+        rx = re.compile(pattern)
+        deadline = time.time() + timeout
+        while True:
+            text = "\n".join(self.screen_text())
+            m = rx.search(text)
+            if m:
+                return m
+            if time.time() > deadline:
+                raise TestFailure(f"screen never matched {pattern!r}; screen:\n{text}")
+            time.sleep(0.2)
+
+    def sendkeys(self, text, delay=0.03):
+        for ch in text:
+            # QEMU queues keys behind each release, so its 100 ms default
+            # hold time would set the typing speed
+            self.qmp("send-key", keys=[{"type": "qcode", "data": k} for k in qcodes(ch)],
+                     **{"hold-time": 10})
+            time.sleep(delay)
+
     def stop(self):
         if self.proc and self.proc.poll() is None:
             self.proc.kill()
@@ -181,3 +206,63 @@ def read_ppm(path):
         raise TestFailure(f"not a P6 PPM: {data[:16]!r}")
     w, h = int(m.group(1)), int(m.group(2))
     return w, h, data[m.end(): m.end() + w * h * 3]
+
+
+_glyphs = None
+
+
+def glyphs():
+    """Maps each glyph's 16 row bytes to its character, from build/font.bin."""
+    global _glyphs
+    if _glyphs is None:
+        with open(os.path.join(BUILD, "font.bin"), "rb") as f:
+            data = f.read()
+        _glyphs = {data[i:i + 16]: chr(32 + i // 16) for i in range(0, len(data), 16)}
+    return _glyphs
+
+
+def screen_to_text(w, h, px):
+    """Reads each 8x16 cell as a glyph. A cell's top-left pixel is background
+    (the font leaves row 0 empty), every other colour is ink. Unknown cells
+    read as '?'."""
+    table = glyphs()
+    stride = w * 3
+    lines = []
+    for cy in range(h // 16):
+        line = []
+        for cx in range(w // 8):
+            base = cy * 16 * stride + cx * 24
+            bg = px[base:base + 3]
+            rows = bytearray(16)
+            for r in range(16):
+                row = px[base + r * stride: base + r * stride + 24]
+                if row == bg * 8:
+                    continue
+                bits = 0
+                for i in range(8):
+                    if row[i * 3:i * 3 + 3] != bg:
+                        bits |= 0x80 >> i
+                rows[r] = bits
+            line.append(table.get(bytes(rows), "?"))
+        lines.append("".join(line).rstrip())
+    return lines
+
+
+_QCODE_NAMES = {
+    " ": "spc", "\n": "ret", "\t": "tab", "\b": "backspace", "-": "minus",
+    "=": "equal", "[": "bracket_left", "]": "bracket_right", ";": "semicolon",
+    "'": "apostrophe", "`": "grave_accent", "\\": "backslash", ",": "comma",
+    ".": "dot", "/": "slash",
+}
+_SHIFTED = dict(zip('!@#$%^&*()_+{}:"~|<>?', '1234567890-=[];\'`\\,./'))
+
+
+def qcodes(ch):
+    """QMP qcodes that type `ch` on a US layout."""
+    if ch.isalpha():
+        return ["shift", ch.lower()] if ch.isupper() else [ch]
+    if ch.isdigit():
+        return [ch]
+    if ch in _SHIFTED:
+        return ["shift"] + qcodes(_SHIFTED[ch])
+    return [_QCODE_NAMES[ch]]

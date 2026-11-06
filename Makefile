@@ -38,6 +38,10 @@ $(IMG): $(BUILD)/stage1.bin $(BUILD)/stage2.bin $(BUILD)/kernel.bin
 	dd if=$(BUILD)/stage2.bin of=$@ bs=512 seek=$(call layout,STAGE2_LBA) conv=notrunc status=none
 	dd if=$(BUILD)/kernel.bin of=$@ bs=512 seek=$(call layout,KERNEL_LBA) conv=notrunc status=none
 
+# the test harness reads text off screendumps with the same glyphs
+$(BUILD)/font.bin: glass/font.asm | $(BUILD)
+	$(ASM) -o $@ $<
+
 -include $(wildcard $(BUILD)/*.d)
 
 run: $(IMG)
@@ -47,7 +51,7 @@ run: $(IMG)
 debug: $(IMG)
 	$(QEMU) $(QEMU_FLAGS) -s -S
 
-test: $(IMG)
+test: $(IMG) $(BUILD)/font.bin
 	$(PY) tests/run.py $(T)
 
 clean:

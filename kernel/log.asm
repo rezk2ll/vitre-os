@@ -1,18 +1,63 @@
 ; Kernel log: every byte goes to COM1 (and to the console once it exists).
 
 ; name: kputc
-; in:   dil = byte; '\n' is sent as "\r\n"
+; in:   dil = byte; '\n' is sent as "\r\n" on serial
 ; out:  none
 ; clobbers: rax, rdx
 kputc:
+    push rdi
     cmp dil, 10
     jne .raw
-    push rdi
     mov edi, 13
     call serial_putc
-    pop rdi
+    mov rdi, [rsp]
 .raw:
-    jmp serial_putc
+    call serial_putc
+    pop rdi
+    cmp byte [rel console_ready], 0
+    je .done
+    push rcx
+    push rsi
+    push rdi
+    push r8
+    push r9
+    push r10
+    push r11
+    movzx esi, dil
+    lea rdi, [rel kernel_console]
+    call console_putc
+    pop r11
+    pop r10
+    pop r9
+    pop r8
+    pop rdi
+    pop rsi
+    pop rcx
+.done:
+    ret
+
+; name: klog_console_init
+; in:   framebuffer initialised (fb_init)
+; out:  kernel log also drawn on a full-screen console
+; clobbers: caller-saved
+klog_console_init:
+    sub rsp, 8
+    lea rdi, [rel kernel_console]
+    xor esi, esi
+    xor edx, edx
+    mov rcx, [rel fb_width]
+    shr rcx, 3
+    mov r8, [rel fb_height]
+    shr r8, 4
+    call console_init
+    mov byte [rel console_ready], 1
+    add rsp, 8
+    ret
+
+section .bss
+kernel_console resb CON_SIZE
+console_ready  resb 1
+section .text
 
 ; name: kputs
 ; in:   rdi = zero-terminated string
