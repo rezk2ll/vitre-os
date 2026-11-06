@@ -5,16 +5,39 @@ on:
   push:
     branches: [main]
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - name: Install toolchain
+      - uses: actions/checkout@v5
+      # The .debs are cached per runner image, so a cache hit installs with
+      # dpkg alone and never touches the Ubuntu mirrors.
+      - id: image
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends nasm qemu-system-x86
+          echo "version=$ImageOS-$ImageVersion" >> "$GITHUB_OUTPUT"
+          echo "DEBS=$HOME/.debs" >> "$GITHUB_ENV"
+      - uses: actions/cache@v5
+        with:
+          path: ~/.debs
+          key: debs-${{ steps.image.outputs.version }}-nasm-qemu-v1
+      - name: Install toolchain
+        timeout-minutes: 8
+        run: |
+          sudo rm -f /var/lib/man-db/auto-update
+          if ! { ls "$DEBS"/*.deb >/dev/null 2>&1 && sudo dpkg -i "$DEBS"/*.deb; }; then
+            mkdir -p "$DEBS/partial"
+            APT_NET="-o Acquire::Retries=3 -o Acquire::http::Timeout=20"
+            sudo apt-get update $APT_NET
+            sudo apt-get install -y --no-install-recommends $APT_NET \
+              -o Dir::Cache::archives="$DEBS" -o APT::Keep-Downloaded-Packages=true \
+              nasm qemu-system-x86
+            sudo chown -R "$USER" "$DEBS"
+          fi
           nasm -v | grep -E 'version 2\.16\.01( |$)'
           qemu-system-x86_64 --version
       - name: Build
@@ -23,7 +46,7 @@ jobs:
         run: make test
       - name: Upload serial logs
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: serial-logs
           path: build/logs/
