@@ -358,6 +358,7 @@ shell_commands:
     shell_command "mem", cmd_mem, "free pages and heap"
     shell_command "tasks", cmd_tasks, "list tasks"
     shell_command "syms", sym_dump, "dump the symbol table"
+    shell_command "forge", forge_check, "reassemble the patchable modules"
     shell_command "uptime", cmd_uptime, "time since boot"
     shell_command "layout", cmd_layout, "keyboard layout: layout [azerty|qwerty]"
     shell_command "reboot", cmd_reboot, "restart the machine"

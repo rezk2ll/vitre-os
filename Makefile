@@ -25,7 +25,7 @@ layout = $(shell awk '$$1 == "$(1)" { print $$3 }' boot/layout.inc)
 $(BUILD)/stage1.bin: boot/stage1.asm | $(BUILD)
 	$(ASM) -o $@ $<
 
-SRCS := $(shell find boot kernel drivers glass lib apps -name '*.asm' -o -name '*.inc')
+SRCS := $(shell find boot kernel drivers glass lib apps forge -name '*.asm' -o -name '*.inc')
 GEN  := $(BUILD)/gen/.stamp
 
 # jump table, symbol table and source area; gen.py rewrites a file only when

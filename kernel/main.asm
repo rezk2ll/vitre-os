@@ -140,6 +140,16 @@ selftest_pit:
 %include "drivers/ata.asm"
 %include "kernel/report.asm"
 %include "kernel/symbols.asm"
+%include "forge/lex.asm"
+%include "forge/expr.asm"
+%include "forge/forge.asm"
+%include "forge/check.asm"
+%include "forge/operand.asm"
+%include "forge/encode.asm"
+%include "forge/modrm.asm"
+%include "forge/arith.asm"
+%include "forge/unary.asm"
+%include "forge/flow.asm"
 %include "apps/shell.asm"
 
 msg_long_mode  db "[boot] long mode ok", 10, 0
