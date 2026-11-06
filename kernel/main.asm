@@ -123,6 +123,7 @@ selftest_pit:
 %include "glass/console.asm"
 %include "drivers/keyboard.asm"
 %include "kernel/pmm.asm"
+%include "kernel/heap.asm"
 
 msg_long_mode  db "[boot] long mode ok", 10, 0
 msg_image_ok   db "[kernel] image ok", 10, 0

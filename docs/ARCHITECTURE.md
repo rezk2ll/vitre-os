@@ -72,3 +72,4 @@ flowchart LR
 ## Memory
 
 - `kernel/pmm.asm`: `page_alloc(n)` / `page_free(addr, n)` over a bitmap of 4 KiB pages built from E820. Physical addresses are usable directly through the identity map.
+- `kernel/heap.asm`: `kmalloc(size)` / `kfree(ptr)`, first fit over an address-ordered free list with 16-byte headers. It grows by at least 1 MiB of contiguous pages at a time.
