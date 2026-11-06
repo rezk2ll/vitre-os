@@ -2,16 +2,19 @@
 
 ## Current milestone
 
-M0 done. Next: M1, stage 1 loads stage 2, stage 2 reaches long mode and prints `[boot] long mode ok`.
+M1 done. Next: M2, IDT with exception register dumps, PIC remap, PIT at 1000 Hz.
 
 ## Milestones
 
 - M0: done. `make test` boots the image headless, reads COM1, talks QMP.
+- M1: done. Stage 1 loads stage 2, stage 2 loads the kernel to 1 MiB, collects E820, enables A20 and enters long mode.
 
 ## Stubs
 
-- `boot/stage1.asm`: prints a banner and halts, does not load stage 2 (M1).
+- None.
 
 ## Sizes
 
 - stage1: 512 bytes
+- stage2: 16 KiB slot (code is under 1 KiB)
+- kernel: 184 bytes

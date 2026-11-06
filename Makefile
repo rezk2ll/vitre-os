@@ -15,12 +15,27 @@ all: $(IMG)
 $(BUILD):
 	mkdir -p $@
 
-$(BUILD)/stage1.bin: boot/stage1.asm | $(BUILD)
-	$(NASM) -f bin -o $@ $<
+ASM = $(NASM) -f bin -I. -MD $@.d -MP
 
-$(IMG): $(BUILD)/stage1.bin
-	cp $< $@
-	truncate -s 1M $@
+layout = $(shell awk '$$1 == "$(1)" { print $$3 }' boot/layout.inc)
+
+$(BUILD)/stage1.bin: boot/stage1.asm | $(BUILD)
+	$(ASM) -o $@ $<
+
+$(BUILD)/kernel.bin: kernel/main.asm | $(BUILD)
+	$(ASM) -o $@ $<
+
+$(BUILD)/stage2.bin: boot/stage2.asm $(BUILD)/kernel.bin | $(BUILD)
+	$(ASM) -DKERNEL_SECTORS=$$(( ($$(stat -c %s $(BUILD)/kernel.bin) + 511) / 512 )) -o $@ $<
+
+$(IMG): $(BUILD)/stage1.bin $(BUILD)/stage2.bin $(BUILD)/kernel.bin
+	rm -f $@
+	truncate -s 4M $@
+	dd if=$(BUILD)/stage1.bin of=$@ conv=notrunc status=none
+	dd if=$(BUILD)/stage2.bin of=$@ bs=512 seek=$(call layout,STAGE2_LBA) conv=notrunc status=none
+	dd if=$(BUILD)/kernel.bin of=$@ bs=512 seek=$(call layout,KERNEL_LBA) conv=notrunc status=none
+
+-include $(wildcard $(BUILD)/*.d)
 
 run: $(IMG)
 	$(QEMU) $(QEMU_FLAGS)
