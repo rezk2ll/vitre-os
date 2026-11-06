@@ -30,8 +30,9 @@ def fresh_disk():
 
 
 class Vm:
-    def __init__(self, name, disk=None, net=False, mem="128M", extra=()):
+    def __init__(self, name, disk=None, net=False, mem="128M", cmdline="", extra=()):
         self.name = name
+        self.cmdline = cmdline
         self.disk = disk or fresh_disk()
         self.own_disk = disk is None
         self.net = net
@@ -65,6 +66,8 @@ class Vm:
             "-qmp", f"unix:{self.qmp_path},server=on,wait=off",
         ]
         cmd += ["-nic", "user,model=e1000"] if self.net else ["-nic", "none"]
+        if self.cmdline:
+            cmd += ["-fw_cfg", f"name=opt/vitre/cmdline,string={self.cmdline.replace(',', ',,')}"]
         cmd += self.extra
         self.log = open(os.path.join(LOGS, f"{self.name}.serial.log"), "wb")
         self.proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL,

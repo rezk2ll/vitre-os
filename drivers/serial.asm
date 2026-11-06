@@ -16,21 +16,3 @@ serial_putc:
     mov al, dil
     out dx, al
     ret
-
-; name: serial_puts
-; in:   rdi = zero-terminated string
-; out:  none
-; clobbers: rax, rdx, rdi
-serial_puts:
-    push rbx
-    mov rbx, rdi
-.next:
-    movzx edi, byte [rbx]
-    test dil, dil
-    jz .done
-    call serial_putc
-    inc rbx
-    jmp .next
-.done:
-    pop rbx
-    ret
