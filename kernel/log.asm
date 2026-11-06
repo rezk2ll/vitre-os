@@ -107,28 +107,4 @@ kput_hex:
     pop rbx
     ret
 
-; name: kput_dec
-; in:   rdi = unsigned value, printed in decimal
-; out:  none
-; clobbers: rax, rcx, rdx, rdi, rsi
-; patchable: yes
-kput_dec:
-    sub rsp, 40
-    lea rsi, [rsp + 31]
-    mov byte [rsi], 0
-    mov rax, rdi
-    mov ecx, 10
-.div:
-    xor edx, edx
-    div rcx
-    add dl, '0'
-    dec rsi
-    mov [rsi], dl
-    test rax, rax
-    jnz .div
-    mov rdi, rsi
-    call kputs
-    add rsp, 40
-    ret
-
 hex_digits db "0123456789abcdef"

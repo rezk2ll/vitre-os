@@ -21,28 +21,6 @@ fb_init:
     stc
     ret
 
-; name: fb_log_mode
-; in:   fb_init succeeded
-; out:  "[fb] WxH" on the log
-; clobbers: caller-saved
-; patchable: yes
-fb_log_mode:
-    sub rsp, 8
-    lea rdi, [rel fb_msg_mode]
-    call kputs
-    mov rdi, [rel fb_width]
-    call [rel jt_kput_dec]
-    mov edi, 'x'
-    call kputc
-    mov rdi, [rel fb_height]
-    call [rel jt_kput_dec]
-    mov edi, 10
-    call kputc
-    add rsp, 8
-    ret
-
-fb_msg_mode db "[fb] ", 0
-
 ; name: fb_fill_rect
 ; in:   rdi = x, rsi = y, rdx = width, rcx = height, r8d = colour
 ; out:  none

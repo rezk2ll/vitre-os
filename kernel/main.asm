@@ -138,6 +138,7 @@ selftest_pit:
 %include "kernel/sched.asm"
 %include "kernel/tasktest.asm"
 %include "drivers/ata.asm"
+%include "kernel/report.asm"
 %include "kernel/symbols.asm"
 %include "apps/shell.asm"
 

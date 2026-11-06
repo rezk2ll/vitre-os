@@ -199,52 +199,6 @@ sched_switch:
     pop rbx
     ret
 
-; name: sched_list
-; in:   none
-; out:  one "[task] id name state ticks" line per task on the log
-; clobbers: caller-saved
-; patchable: yes
-sched_list:
-    push rbx
-    push r12
-    sub rsp, 8
-    lea rbx, [rel sched_tasks]
-    xor r12d, r12d
-.task:
-    cmp qword [rbx + TASK_STATE], TASK_FREE
-    je .next
-    lea rdi, [rel sched_msg_task]
-    call kputs
-    mov edi, r12d
-    call [rel jt_kput_dec]
-    mov edi, ' '
-    call kputc
-    lea rdi, [rbx + TASK_NAME]
-    call kputs
-    lea rdi, [rel sched_msg_ready]
-    cmp qword [rbx + TASK_STATE], TASK_READY
-    je .state
-    lea rdi, [rel sched_msg_dead]
-.state:
-    call kputs
-    mov rdi, [rbx + TASK_TICKS]
-    call [rel jt_kput_dec]
-    mov edi, 10
-    call kputc
-.next:
-    add rbx, TASK_SIZE
-    inc r12d
-    cmp r12d, MAX_TASKS
-    jb .task
-    add rsp, 8
-    pop r12
-    pop rbx
-    ret
-
-sched_msg_task  db "[task] ", 0
-sched_msg_ready db " ready ", 0
-sched_msg_dead  db " dead ", 0
-
 section .bss
 alignb 8
 sched_tasks      resb TASK_SIZE * MAX_TASKS

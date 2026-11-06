@@ -165,59 +165,6 @@ page_free:
 .done:
     ret
 
-; name: pmm_log
-; in:   none
-; out:  E820 map and free memory on the log
-; clobbers: caller-saved
-; patchable: yes
-pmm_log:
-    push rbx
-    push r12
-    sub rsp, 8
-    movzx r12d, word [BOOTINFO_E820_COUNT]
-    mov rbx, BOOTINFO_E820
-.entry:
-    test r12d, r12d
-    jz .summary
-    lea rdi, [rel pmm_msg_e820]
-    call kputs
-    mov rdi, [rbx]
-    call kput_hex
-    mov edi, ' '
-    call kputc
-    mov rdi, [rbx + 8]
-    call kput_hex
-    lea rdi, [rel pmm_msg_type]
-    call kputs
-    mov edi, [rbx + 16]
-    call [rel jt_kput_dec]
-    mov edi, 10
-    call kputc
-    add rbx, 24
-    dec r12d
-    jmp .entry
-.summary:
-    lea rdi, [rel pmm_msg_free]
-    call kputs
-    mov rdi, [rel pmm_free_pages]
-    call [rel jt_kput_dec]
-    lea rdi, [rel pmm_msg_of]
-    call kputs
-    mov rdi, [rel pmm_total_pages]
-    call [rel jt_kput_dec]
-    lea rdi, [rel pmm_msg_pages]
-    call kputs
-    add rsp, 8
-    pop r12
-    pop rbx
-    ret
-
-pmm_msg_e820  db "[mem] e820 ", 0
-pmm_msg_type  db " type ", 0
-pmm_msg_free  db "[mem] free pages ", 0
-pmm_msg_of    db " of ", 0
-pmm_msg_pages db " usable", 10, 0
-
 section .bss
 alignb 8
 pmm_free_pages  resq 1
