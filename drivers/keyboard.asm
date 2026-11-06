@@ -1,6 +1,7 @@
 ; PS/2 keyboard on IRQ 1, scancode set 1 (the i8042 translates by default).
 ; Key codes: ASCII for printable keys, Enter = 10, Backspace = 8, Tab = 9,
-; Ctrl+letter = 1-26, and KEY_* above 0x7f for keys without ASCII.
+; Ctrl+letter = 1-26, KEY_* in 0x80-0x9f for keys without a character, and
+; Latin-1 (0xa0-0xff) for accented and other non-ASCII characters.
 
 KEY_UP    equ 0x80
 KEY_DOWN  equ 0x81
@@ -17,11 +18,15 @@ KEY_ESC   equ 27
 KBD_BUF_SIZE equ 64                 ; power of two
 
 ; name: kbd_init
-; in:   none
-; out:  IRQ 1 handler installed and unmasked
+; in:   kernel command line read
+; out:  layout chosen, IRQ 1 handler installed and unmasked
 ; clobbers: caller-saved
 kbd_init:
     sub rsp, 8
+    lea rdi, [rel kbd_opt_qwerty]
+    call cmdline_has
+    jnz .drain
+    mov byte [rel kbd_layout], KBD_LAYOUT_QWERTY
 .drain:
     in al, 0x64                     ; drop bytes left from the BIOS
     test al, 1
@@ -80,15 +85,32 @@ kbd_scancode:
     cmp eax, 0x3b                   ; F1-F10
     jb .ascii
     cmp eax, 0x44
-    ja .ignore
+    ja .iso_key
     add eax, KEY_F1 - 0x3b
     jmp kbd_push
+.iso_key:
+    cmp eax, 0x56                   ; the extra key left of Z on ISO boards
+    jne .ignore
+    mov eax, KBD_MAP_ISO
+    jmp .lookup
 .ascii:
-    lea rdx, [rel kbd_map]
+    cmp eax, 0x3a                   ; caps lock
+    je .ignore
+.lookup:
+    movzx edx, byte [rel kbd_layout]
+    imul edx, 3
+    cmp byte [rel kbd_altgr], 0
+    je .no_altgr
+    add edx, 2
+    jmp .map
+.no_altgr:
     cmp byte [rel kbd_shift], 0
-    je .unshifted
-    lea rdx, [rel kbd_map_shift]
-.unshifted:
+    je .map
+    inc edx
+.map:
+    imul edx, KBD_MAP_SIZE
+    lea rcx, [rel kbd_maps]
+    add rdx, rcx
     movzx eax, byte [rdx + rax]
     test eax, eax
     jz .ignore
@@ -103,6 +125,8 @@ kbd_scancode:
     jmp kbd_push
 
 .extended:
+    cmp eax, 0x38                   ; E0 38 is AltGr
+    je .altgr_down
     lea rdx, [rel kbd_ext_codes]
 .ext_next:
     movzx ecx, byte [rdx]
@@ -120,7 +144,12 @@ kbd_scancode:
     cmp eax, 0x1d
     je .ctrl_up
     test ecx, ecx
-    jnz .ignore
+    jz .plain_release
+    cmp eax, 0x38
+    jne .ignore
+    mov byte [rel kbd_altgr], 0
+    ret
+.plain_release:
     mov dl, 1
     cmp eax, 0x2a
     je .shift_up
@@ -147,6 +176,9 @@ kbd_scancode:
     shl dl, cl
     not dl
     and [rel kbd_ctrl], dl
+    ret
+.altgr_down:
+    mov byte [rel kbd_altgr], 1
     ret
 .prefix:
     mov byte [rel kbd_e0], 1
@@ -205,16 +237,44 @@ kbd_getc:
     hlt
     jmp kbd_getc
 
-kbd_map:
+; Layout maps, indexed by scancode 0x00-0x39 plus KBD_MAP_ISO for scancode
+; 0x56. Each layout has a plain, a Shift and an AltGr map, in that order.
+; Bytes from 0xa0 are Latin-1 characters, written as numbers because the
+; source file is UTF-8.
+KBD_LAYOUT_AZERTY equ 0
+KBD_LAYOUT_QWERTY equ 1
+KBD_MAP_ISO  equ 0x3a
+KBD_MAP_SIZE equ 0x3b
+
+kbd_maps:
+    ; AZERTY (French)
+    db 0, KEY_ESC, "&", 0xe9, '"', "'(-", 0xe8, "_", 0xe7, 0xe0, ")=", 8, 9
+    db "azertyuiop^$", 10, 0, "qs"
+    db "dfghjklm", 0xf9, 0xb2, 0, "*wxcv"
+    db "bn,;:!", 0, "*", 0, " ", "<"
+    db 0, KEY_ESC, "1234567890", 0xb0, "+", 8, 9
+    db "AZERTYUIOP", 0xa8, 0xa3, 10, 0, "QS"
+    db "DFGHJKLM%", 0, 0, 0xb5, "WXCV"
+    db "BN?./", 0xa7, 0, "*", 0, " ", ">"
+    db 0, 0, 0, "~#{[|`\^@]}", 0, 0
+    db 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xa4, 0, 0, 0, 0
+    times 16 db 0
+    times 11 db 0
+    ; QWERTY (US)
     db 0, KEY_ESC, "1234567890-=", 8, 9
     db "qwertyuiop[]", 10, 0, "as"
     db "dfghjkl;'`", 0, "\zxcv"
-    db "bnm,./", 0, "*", 0, " ", 0  ; 0x3a caps lock ends the table
-kbd_map_shift:
+    db "bnm,./", 0, "*", 0, " ", "\"
     db 0, KEY_ESC, "!@#$%^&*()_+", 8, 9
     db "QWERTYUIOP{}", 10, 0, "AS"
     db "DFGHJKL:", '"', "~", 0, "|ZXCV"
-    db "BNM<>?", 0, "*", 0, " ", 0
+    db "BNM<>?", 0, "*", 0, " ", "|"
+    times KBD_MAP_SIZE db 0
+kbd_maps_end:
+; division by zero (an assembly error) unless every map has KBD_MAP_SIZE bytes
+KBD_MAPS_CHECK equ 1 / ((kbd_maps_end - kbd_maps) == 6 * KBD_MAP_SIZE)
+
+kbd_opt_qwerty db "kbd=qwerty", 0
 
 ; extended (E0) make codes and their key codes
 kbd_ext_codes:
@@ -229,4 +289,6 @@ kbd_tail  resd 1
 kbd_shift resb 1
 kbd_ctrl  resb 1
 kbd_e0    resb 1
+kbd_altgr resb 1
+kbd_layout resb 1                   ; KBD_LAYOUT_*, AZERTY unless kbd=qwerty
 section .text

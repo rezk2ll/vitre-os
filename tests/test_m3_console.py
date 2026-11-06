@@ -2,8 +2,9 @@ from harness import TestFailure, Vm, glyphs
 
 
 def test_font_glyphs_are_distinct():
-    if len(glyphs()) != 95:
-        raise TestFailure(f"{95 - len(glyphs())} glyphs share a bitmap with another")
+    expected = 95 + len("éèàùçµ²°¨£§¤")
+    if len(glyphs()) != expected:
+        raise TestFailure(f"{expected - len(glyphs())} glyphs share a bitmap with another")
 
 
 def test_boot_log_on_screen():

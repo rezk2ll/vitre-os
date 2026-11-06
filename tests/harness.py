@@ -177,7 +177,8 @@ class Vm:
         for ch in text:
             # QEMU queues keys behind each release, so its 100 ms default
             # hold time would set the typing speed
-            self.qmp("send-key", keys=[{"type": "qcode", "data": k} for k in qcodes(ch)],
+            layout = "qwerty" if "kbd=qwerty" in self.cmdline.split() else "azerty"
+            self.qmp("send-key", keys=[{"type": "qcode", "data": k} for k in qcodes(ch, layout)],
                      **{"hold-time": 10})
             time.sleep(delay)
 
@@ -217,7 +218,10 @@ def glyphs():
     if _glyphs is None:
         with open(os.path.join(BUILD, "font.bin"), "rb") as f:
             data = f.read()
-        _glyphs = {data[i:i + 16]: chr(32 + i // 16) for i in range(0, len(data), 16)}
+        _glyphs = {}
+        for i in range(0, len(data), 16):
+            # codes without a glyph repeat '?', which comes first
+            _glyphs.setdefault(data[i:i + 16], chr(32 + i // 16))
     return _glyphs
 
 
@@ -248,21 +252,36 @@ def screen_to_text(w, h, px):
     return lines
 
 
-_QCODE_NAMES = {
-    " ": "spc", "\n": "ret", "\t": "tab", "\b": "backspace", "-": "minus",
-    "=": "equal", "[": "bracket_left", "]": "bracket_right", ";": "semicolon",
-    "'": "apostrophe", "`": "grave_accent", "\\": "backslash", ",": "comma",
-    ".": "dot", "/": "slash",
-}
-_SHIFTED = dict(zip('!@#$%^&*()_+{}:"~|<>?', '1234567890-=[];\'`\\,./'))
+# QEMU names keys by their US position. Each row lists the qcodes of a run of
+# physical keys, then what that run types on each layout (plain, Shift,
+# AltGr); "\0" marks no character.
+_ROWS = [
+    ("1 2 3 4 5 6 7 8 9 0 minus equal",
+     {"azerty": ("&é\"'(-è_çà)=", "1234567890°+", "\0~#{[|`\\^@]}"),
+      "qwerty": ("1234567890-=", "!@#$%^&*()_+", "")}),
+    ("q w e r t y u i o p bracket_left bracket_right",
+     {"azerty": ("azertyuiop^$", "AZERTYUIOP¨£", "\0" * 11 + "¤"),
+      "qwerty": ("qwertyuiop[]", "QWERTYUIOP{}", "")}),
+    ("a s d f g h j k l semicolon apostrophe grave_accent",
+     {"azerty": ("qsdfghjklmù²", "QSDFGHJKLM%\0", ""),
+      "qwerty": ("asdfghjkl;'`", "ASDFGHJKL:\"~", "")}),
+    ("backslash z x c v b n m comma dot slash",
+     {"azerty": ("*wxcvbn,;:!", "µWXCVBN?./§", ""),
+      "qwerty": ("\\zxcvbnm,./", "|ZXCVBNM<>?", "")}),
+    ("less spc ret tab backspace",
+     {"azerty": ("< \n\t\b", ">", ""), "qwerty": ("\\ \n\t\b", "|", "")}),
+]
+_MODS = ([], ["shift"], ["alt_r"])
+_KEYMAPS = {}
+for names, layouts in _ROWS:
+    for layout, levels in layouts.items():
+        keymap = _KEYMAPS.setdefault(layout, {})
+        for mods, chars in zip(_MODS, levels):
+            for name, ch in zip(names.split(), chars):
+                if ch != "\0":
+                    keymap.setdefault(ch, mods + [name])
 
 
-def qcodes(ch):
-    """QMP qcodes that type `ch` on a US layout."""
-    if ch.isalpha():
-        return ["shift", ch.lower()] if ch.isupper() else [ch]
-    if ch.isdigit():
-        return [ch]
-    if ch in _SHIFTED:
-        return ["shift"] + qcodes(_SHIFTED[ch])
-    return [_QCODE_NAMES[ch]]
+def qcodes(ch, layout="azerty"):
+    """QMP qcodes that type `ch` on the kernel's keyboard layout."""
+    return _KEYMAPS[layout][ch]

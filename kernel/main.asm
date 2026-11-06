@@ -64,8 +64,9 @@ kernel_entry:
     call kputs
 .echo:
     call kbd_getc
-    cmp eax, 0x80
-    jae .echo
+    lea ecx, [rax - 0x80]           ; KEY_* codes have no character
+    cmp ecx, 0x20
+    jb .echo
     mov edi, eax
     call kputc
     jmp .echo
