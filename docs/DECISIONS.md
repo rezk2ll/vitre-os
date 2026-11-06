@@ -48,3 +48,7 @@ The 8x16 font in `glass/font.asm` is an original design covering ASCII 32 to 126
 ## D11. Screen layout on the 8x16 grid
 
 Consoles and, later, Glass panes put text only on the 8x16 character grid of the screen. Tests then read any screen region as text by matching each cell against `build/font.bin`, which is `glass/font.asm` assembled on its own. A cell's top-left pixel is its background, since every glyph leaves row 0 empty. Colours can change freely without breaking tests.
+
+## D12. Keyboard
+
+Scancode set 1, which the i8042 produces by default under QEMU. Printable keys map to ASCII on a US layout, Ctrl+letter gives 1 to 26, and arrows, paging keys and F1 to F10 get `KEY_*` codes above 0x7f. A 64-byte ring buffer sits between the IRQ and `kbd_getc`.
