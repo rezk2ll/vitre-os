@@ -72,3 +72,7 @@ Kernel tasks only, round-robin, preempted by the PIT every 10 ms. A task is a sl
 ## D17. Source area and ATA PIO
 
 The source area holds the full text of every file that contains a patchable function, which lets Forge show and reassemble a whole module. It starts with a header (`VSRC`, file count, total length) and a directory of 48-byte entries (path, offset, length); a symbol record's source offset points at the function's header comment inside it. It lives on disk at LBA 2048, 1 MiB reserved, so the kernel can grow to just under 1 MiB without moving it. The kernel reads it at boot with polled ATA PIO (LBA28, primary master), the same driver that will write saved patches back. Polling is fine at this size and avoids an IRQ 14 handler.
+
+## D18. Patchable modules and the Forge test
+
+A patchable module is a whole file written in the Vitre dialect (docs/DIALECT.md), so Forge only ever assembles code it fully understands. The log printers moved into `kernel/report.asm` for this. Names a module uses but does not define are resolved through a label table that `tools/gen.py` emits next to the symbol table: every top-level label and `equ` in the image with its value. Because the module is linked into the kernel by NASM, "Forge matches NASM" is checked inside the OS: Forge assembles the module's source from the source area at the address of its first label, and the result must equal the kernel's own bytes at that address.

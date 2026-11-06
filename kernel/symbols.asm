@@ -12,6 +12,7 @@ SRC_HDR_LENGTH equ 8
 
 %include "build/gen/jt.inc"
 %include "build/gen/symtab.inc"
+%include "build/gen/labels.inc"
 
 ; name: src_load
 ; in:   none
