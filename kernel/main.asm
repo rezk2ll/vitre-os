@@ -63,16 +63,7 @@ kernel_entry:
     call kputs
 
     call kernel_selftests
-    lea rdi, [rel msg_echo]
-    call kputs
-.echo:
-    call kbd_getc
-    lea ecx, [rax - 0x80]           ; KEY_* codes have no character
-    cmp ecx, 0x20
-    jb .echo
-    mov edi, eax
-    call kputc
-    jmp .echo
+    jmp shell_run
 
 ; name: kernel_selftests
 ; in:   none
@@ -148,13 +139,13 @@ selftest_pit:
 %include "kernel/tasktest.asm"
 %include "drivers/ata.asm"
 %include "kernel/symbols.asm"
+%include "apps/shell.asm"
 
 msg_long_mode  db "[boot] long mode ok", 10, 0
 msg_image_ok   db "[kernel] image ok", 10, 0
 msg_image_bad  db "[kernel] image truncated", 10, 0
 msg_cmdline    db "[kernel] cmdline: ", 0
 msg_interrupts db "[kernel] interrupts on", 10, 0
-msg_echo       db "[kbd] echo ready", 10, 0
 msg_ticks      db "[timer] ticks=", 0
 test_pit       db "test=pit", 0
 test_ud        db "test=ud", 0

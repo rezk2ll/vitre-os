@@ -1,0 +1,281 @@
+; Shell: reads a line from the keyboard, runs the command it names.
+
+SHELL_LINE_MAX equ 256
+
+SHELL_NAME_COLUMN equ 10
+
+; A command record is its handler (rdi = argument string), then its name and
+; its summary as zero-terminated strings. A zero handler ends the table.
+%macro shell_command 3
+    dq %2
+    db %1, 0, %3, 0
+%endmacro
+
+; name: shell_run
+; in:   keyboard and console ready, interrupts on
+; out:  does not return
+; clobbers: everything
+shell_run:
+    sub rsp, 8
+    lea rdi, [rel shell_msg_ready]
+    call kputs
+.line:
+    lea rdi, [rel shell_prompt]
+    call kputs
+    lea rdi, [rel shell_line]
+    call shell_readline
+    lea rdi, [rel shell_line]
+    call shell_execute
+    jmp .line
+
+; name: shell_readline
+; in:   rdi = buffer of SHELL_LINE_MAX bytes
+; out:  zero-terminated line in the buffer, rax = length; the line is echoed.
+;       Backspace erases, Ctrl+C drops the line, Ctrl+L clears the screen.
+; clobbers: caller-saved
+shell_readline:
+    push rbx
+    push r12
+    sub rsp, 8
+    mov rbx, rdi
+    xor r12d, r12d
+.key:
+    call kbd_getc
+    cmp eax, 10
+    je .enter
+    cmp eax, 8
+    je .backspace
+    cmp eax, 3
+    je .cancel
+    cmp eax, 12
+    je .clear
+    cmp eax, ' '
+    jb .key
+    lea ecx, [rax - 0x80]           ; KEY_* codes have no character
+    cmp ecx, 0x20
+    jb .key
+    cmp r12d, SHELL_LINE_MAX - 1
+    jae .key
+    mov [rbx + r12], al
+    inc r12d
+    mov edi, eax
+    call kputc
+    jmp .key
+.backspace:
+    test r12d, r12d
+    jz .key
+    dec r12d
+    mov edi, 8
+    call kputc
+    jmp .key
+.cancel:
+    lea rdi, [rel shell_msg_cancel]
+    call kputs
+    xor r12d, r12d
+    jmp .enter
+.clear:
+    call shell_clear_screen
+    lea rdi, [rel shell_prompt]
+    call kputs
+    mov byte [rbx + r12], 0
+    mov rdi, rbx
+    call kputs
+    jmp .key
+.enter:
+    mov byte [rbx + r12], 0
+    mov edi, 10
+    call kputc
+    mov eax, r12d
+    add rsp, 8
+    pop r12
+    pop rbx
+    ret
+
+; name: shell_execute
+; in:   rdi = command line (modified: the command word is cut off with a 0)
+; out:  the command has run, or "unknown command" was printed
+; clobbers: caller-saved
+shell_execute:
+    push rbx
+    push r12
+    push r13
+    mov rbx, rdi
+.skip_lead:
+    cmp byte [rbx], ' '
+    jne .word
+    inc rbx
+    jmp .skip_lead
+.word:
+    cmp byte [rbx], 0
+    je .done
+    mov r12, rbx                    ; r12 = argument string
+.scan:
+    mov al, [r12]
+    test al, al
+    jz .args
+    cmp al, ' '
+    je .cut
+    inc r12
+    jmp .scan
+.cut:
+    mov byte [r12], 0
+    inc r12
+.skip_space:
+    cmp byte [r12], ' '
+    jne .args
+    inc r12
+    jmp .skip_space
+.args:
+    lea r13, [rel shell_commands]
+.find:
+    cmp qword [r13], 0
+    je .unknown
+    mov rdi, rbx
+    lea rsi, [r13 + 8]
+    call str_eq
+    je .run
+    mov rdi, r13
+    call shell_next_command
+    mov r13, rax
+    jmp .find
+.run:
+    mov rdi, r12
+    call [r13]
+    jmp .done
+.unknown:
+    lea rdi, [rel shell_msg_unknown]
+    call kputs
+    mov rdi, rbx
+    call kputs
+    mov edi, 10
+    call kputc
+.done:
+    pop r13
+    pop r12
+    pop rbx
+    ret
+
+; name: shell_clear_screen
+; in:   none
+; out:  console cleared, cursor at the top left
+; clobbers: caller-saved
+shell_clear_screen:
+    cmp byte [rel console_ready], 0
+    je .done
+    lea rdi, [rel kernel_console]
+    jmp console_clear
+.done:
+    ret
+
+; name: cmd_help
+; in:   rdi = arguments (ignored)
+; out:  one line per command with its summary
+; clobbers: caller-saved
+cmd_help:
+    push rbx
+    push r12
+    sub rsp, 8
+    lea rbx, [rel shell_commands]
+.next:
+    cmp qword [rbx], 0
+    je .done
+    lea rdi, [rel shell_indent]
+    call kputs
+    lea r12, [rbx + 8]
+.name:
+    movzx edi, byte [r12]
+    inc r12
+    test edi, edi
+    jz .pad
+    call kputc
+    jmp .name
+.pad:
+    lea rax, [rbx + 8 + SHELL_NAME_COLUMN]
+    cmp r12, rax
+    ja .summary
+    mov edi, ' '
+    call kputc
+    inc r12
+    jmp .pad
+.summary:
+    lea rdi, [rbx + 8]
+    call str_skip
+    mov rdi, rax
+    call kputs
+    mov edi, 10
+    call kputc
+    mov rdi, rbx
+    call shell_next_command
+    mov rbx, rax
+    jmp .next
+.done:
+    add rsp, 8
+    pop r12
+    pop rbx
+    ret
+
+; name: shell_next_command
+; in:   rdi = command record
+; out:  rax = the record after it
+; clobbers: rdi
+shell_next_command:
+    lea rdi, [rdi + 8]
+    call str_skip
+    mov rdi, rax
+    jmp str_skip
+
+; name: cmd_mem
+; in:   rdi = arguments (ignored)
+; out:  free and total physical pages and heap bytes
+; clobbers: caller-saved
+cmd_mem:
+    sub rsp, 8
+    lea rdi, [rel shell_msg_pages]
+    call kputs
+    mov rdi, [rel pmm_free_pages]
+    call [rel jt_kput_dec]
+    lea rdi, [rel shell_msg_of]
+    call kputs
+    mov rdi, [rel pmm_total_pages]
+    call [rel jt_kput_dec]
+    lea rdi, [rel shell_msg_heap]
+    call kputs
+    mov rdi, [rel heap_free_bytes]
+    call [rel jt_kput_dec]
+    lea rdi, [rel shell_msg_of]
+    call kputs
+    mov rdi, [rel heap_total_bytes]
+    call [rel jt_kput_dec]
+    lea rdi, [rel shell_msg_bytes]
+    call kputs
+    add rsp, 8
+    ret
+
+; name: cmd_tasks
+; in:   rdi = arguments (ignored)
+; out:  the task table
+; clobbers: caller-saved
+cmd_tasks:
+    jmp [rel jt_sched_list]
+
+shell_commands:
+    shell_command "help", cmd_help, "list commands"
+    shell_command "clear", shell_clear_screen, "clear the screen (also Ctrl+L)"
+    shell_command "mem", cmd_mem, "free pages and heap"
+    shell_command "tasks", cmd_tasks, "list tasks"
+    shell_command "syms", sym_dump, "dump the symbol table"
+    dq 0
+
+shell_msg_ready  db "[shell] ready, type help", 10, 0
+shell_prompt     db "vitre> ", 0
+shell_msg_cancel db "^C", 0
+shell_msg_unknown db "unknown command: ", 0
+shell_indent     db "  ", 0
+shell_msg_pages  db "pages free ", 0
+shell_msg_of     db " of ", 0
+shell_msg_heap   db ", heap free ", 0
+shell_msg_bytes  db " bytes", 10, 0
+
+section .bss
+shell_line resb SHELL_LINE_MAX
+section .text

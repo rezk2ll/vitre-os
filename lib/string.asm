@@ -15,6 +15,18 @@ str_eq:
 .done:
     ret
 
+; name: str_skip
+; in:   rdi = zero-terminated string
+; out:  rax = the byte after its terminator
+; clobbers: none
+str_skip:
+    mov rax, rdi
+.next:
+    inc rax
+    cmp byte [rax - 1], 0
+    jne .next
+    ret
+
 ; name: str_has_word
 ; in:   rdi = word, rsi = space-separated words (both zero-terminated)
 ; out:  ZF=1 if the word is one of the words
