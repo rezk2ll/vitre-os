@@ -4,6 +4,8 @@
 STAGE2_LBA       equ 1
 STAGE2_SECTORS   equ 32
 KERNEL_LBA       equ 64
+SRC_LBA          equ 2048                 ; source area, see tools/gen.py
+SRC_SECTORS      equ 2048
 
 ; low memory
 BOOTINFO         equ 0x5000

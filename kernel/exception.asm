@@ -15,8 +15,23 @@ exception_fatal:
     call kputs
     lea rdi, [rel exc_msg_vec]
     call kputs
-    mov rdi, [rbx + INT_FRAME_VECTOR]
-    call kput_dec
+    ; written out here, not with kput_dec: a faulting patch of kput_dec must
+    ; not fault again inside this dump
+    mov eax, [rbx + INT_FRAME_VECTOR]
+    mov ecx, 10
+    xor edx, edx
+    div ecx
+    push rdx
+    sub rsp, 8
+    test eax, eax
+    jz .units
+    lea edi, [rax + '0']
+    call kputc
+.units:
+    add rsp, 8
+    pop rdi
+    add edi, '0'
+    call kputc
     lea rdi, [rel exc_msg_err]
     call kputs
     mov rdi, [rbx + INT_FRAME_ERROR]

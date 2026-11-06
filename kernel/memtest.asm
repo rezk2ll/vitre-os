@@ -153,7 +153,7 @@ selftest_mem:
     call kputs
     call heap_free_blocks
     mov rdi, rax
-    call kput_dec
+    call [rel jt_kput_dec]
     mov edi, 10
     call kputc
     jmp .done
