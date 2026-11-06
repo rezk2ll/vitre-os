@@ -68,3 +68,7 @@ flowchart LR
 - `glass/console.asm`: a console is a struct (origin, size in cells, cursor, colours) drawing on the 8x16 grid. The kernel log owns a full-screen one; Glass panes will each own one.
 - `kputc` writes every byte to COM1 and, once the framebuffer is up, to the kernel console.
 - `drivers/keyboard.asm`: IRQ 1 decodes scancodes into key codes in a ring buffer read by `kbd_getc`.
+
+## Memory
+
+- `kernel/pmm.asm`: `page_alloc(n)` / `page_free(addr, n)` over a bitmap of 4 KiB pages built from E820. Physical addresses are usable directly through the identity map.

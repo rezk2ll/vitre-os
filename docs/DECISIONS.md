@@ -52,3 +52,7 @@ Consoles and, later, Glass panes put text only on the 8x16 character grid of the
 ## D12. Keyboard
 
 Scancode set 1, which the i8042 produces by default under QEMU. Printable keys map to ASCII on a US layout, Ctrl+letter gives 1 to 26, and arrows, paging keys and F1 to F10 get `KEY_*` codes above 0x7f. A 64-byte ring buffer sits between the IRQ and `kbd_getc`.
+
+## D13. Physical page allocator
+
+A bitmap with one bit per 4 KiB page below 4 GiB (128 KiB of .bss), built from the E820 usable ranges. Everything below the end of the kernel's .bss stays reserved. `page_alloc` scans for a run of N free pages from a rotating hint, which keeps the code short and gives contiguous runs for DMA buffers later (e1000 rings). Memory above 4 GiB is ignored because the identity map stops there.
