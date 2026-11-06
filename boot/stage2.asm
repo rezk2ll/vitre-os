@@ -15,6 +15,11 @@ stage2_start:
     mov sp, 0x7c00
     sti                     ; BIOS disk services may wait on IRQs
     mov [boot_drive], dl
+    cld
+    mov di, BOOTINFO
+    mov cx, 0x100 / 2
+    xor ax, ax
+    rep stosw
 
     mov si, msg_stage2
     call serial_puts
@@ -28,6 +33,14 @@ stage2_start:
     jc fail_disk
 
     mov si, msg_kernel
+    call serial_puts
+
+    ; serial logging stays available if no mode fits; the kernel then runs headless
+    call vbe_set_mode
+    mov si, msg_vbe
+    jnc .vbe_ok
+    mov si, msg_no_vbe
+.vbe_ok:
     call serial_puts
 
     cli
@@ -52,6 +65,7 @@ fail:
     jmp .halt
 
 %include "boot/serial16.inc"
+%include "boot/vbe16.inc"
 
 ; name: long_mode_check
 ; out:  CF=1 if the CPU has no long mode
@@ -307,6 +321,8 @@ boot_drive db 0
 
 msg_stage2 db "[boot] stage2", 13, 10, 0
 msg_kernel db "[boot] kernel loaded", 13, 10, 0
+msg_vbe    db "[boot] vbe mode set", 13, 10, 0
+msg_no_vbe db "[boot] no 32 bpp vbe mode, headless", 13, 10, 0
 msg_cpu    db "[boot] CPU has no long mode", 13, 10, 0
 msg_a20    db "[boot] A20 failed", 13, 10, 0
 msg_disk   db "[boot] disk read failed", 13, 10, 0

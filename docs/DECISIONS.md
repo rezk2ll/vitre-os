@@ -36,3 +36,11 @@ The kernel reads a command line from the QEMU fw_cfg file `opt/vitre/cmdline`. T
 ## D8. Kernel .bss
 
 Zero-initialised kernel state is declared with `section .bss` in each module. The flat binary leaves it out of the image and `kernel_entry` clears it from `bss_start` to `bss_end`. Large tables such as the IDT cost no disk space or load time.
+
+## D9. Video mode
+
+Stage 2 picks a VBE linear framebuffer mode at 1024x768, 32 bpp, falling back to 800x600. Without one the kernel runs headless on serial. The kernel never changes mode, so no real-mode trip is needed after boot.
+
+## D10. Font
+
+The 8x16 font in `glass/font.asm` is an original design covering ASCII 32 to 126, one glyph per line of `db`. Glyphs sit in rows 2 to 10, with descenders down to row 12. Bold and italic for the browser will be derived at draw time (bit smear, row shear) instead of shipping more glyph tables.

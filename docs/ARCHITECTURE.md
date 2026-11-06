@@ -8,7 +8,8 @@
 
 ## Physical memory
 
-- 0x5000: boot info (E820 count, entries at 0x5100)
+- 0x5000: boot info (E820 count, framebuffer address, pitch, size and depth, E820 entries at 0x5100)
+- 0x6000: VBE controller and mode info buffers (stage 2 only)
 - 0x7c00: stage 1, real-mode stack below it
 - 0x8000: stage 2
 - 0x20000: kernel load bounce buffer (32 KiB)
@@ -44,7 +45,8 @@ flowchart TD
   cpuid --> a20[A20 on]
   a20 --> e820[E820 map to boot info]
   e820 --> load[kernel to 1 MiB via unreal mode]
-  load --> pm[32-bit protected mode]
+  load --> vbe[VBE 1024x768x32 linear framebuffer]
+  vbe --> pm[32-bit protected mode]
   pm --> pg[identity map 4 GiB, PAE, EFER.LME]
   pg --> lm[long mode, jump to 0x100000]
 ```
