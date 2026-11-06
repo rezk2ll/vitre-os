@@ -86,6 +86,11 @@ kernel_selftests:
     jnz .no_ud
     ud2
 .no_ud:
+    lea rdi, [rel test_mem]
+    call cmdline_has
+    jnz .no_mem
+    call selftest_mem
+.no_mem:
     add rsp, 8
     ret
 
@@ -124,6 +129,7 @@ selftest_pit:
 %include "drivers/keyboard.asm"
 %include "kernel/pmm.asm"
 %include "kernel/heap.asm"
+%include "kernel/memtest.asm"
 
 msg_long_mode  db "[boot] long mode ok", 10, 0
 msg_image_ok   db "[kernel] image ok", 10, 0
@@ -134,6 +140,8 @@ msg_echo       db "[kbd] echo ready", 10, 0
 msg_ticks      db "[timer] ticks=", 0
 test_pit       db "test=pit", 0
 test_ud        db "test=ud", 0
+test_mem       db "test=mem", 0
+
 KERNEL_END_MAGIC equ 0x444e454552544956       ; "VITREEND"
 align 8
 kernel_end_magic dq KERNEL_END_MAGIC
