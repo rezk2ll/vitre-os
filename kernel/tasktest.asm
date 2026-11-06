@@ -24,7 +24,7 @@ selftest_tasks:
     cmp dword [rel tasktest_finished], 2
     jb .wait
     call task_yield                 ; lets the scheduler reap both stacks
-    call sched_list
+    call [rel jt_sched_list]
     lea rdi, [rel tasktest_msg_done]
     call kputs
     add rsp, 8
@@ -52,7 +52,7 @@ tasktest_body:
     lea rdi, [rel tasktest_buf_close]
     call kputs
     mov edi, r12d
-    call kput_dec
+    call [rel jt_kput_dec]
     mov edi, 10
     call kputc
     mov edi, 20

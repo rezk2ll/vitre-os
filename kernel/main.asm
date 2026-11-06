@@ -8,6 +8,7 @@
 
 bits 64
 org KERNEL_PHYS
+[map symbols build/kernel.map]
 section .text
 section .bss nobits align=16
 bss_start:
@@ -30,7 +31,7 @@ kernel_entry:
     call kputs
     cmp byte [rel console_ready], 0
     je .no_fb
-    call fb_log_mode
+    call [rel jt_fb_log_mode]
 .no_fb:
     ; the last qword of the image proves stage 2 loaded all of it
     mov rax, KERNEL_END_MAGIC
@@ -50,7 +51,7 @@ kernel_entry:
     call kputc
 
     call pmm_init
-    call pmm_log
+    call [rel jt_pmm_log]
     call idt_init
     call pic_init
     call pit_init
@@ -98,6 +99,11 @@ kernel_selftests:
     jnz .no_tasks
     call selftest_tasks
 .no_tasks:
+    lea rdi, [rel test_syms]
+    call cmdline_has
+    jnz .no_syms
+    call sym_dump
+.no_syms:
     add rsp, 8
     ret
 
@@ -114,7 +120,7 @@ selftest_pit:
     lea rdi, [rel msg_ticks]
     call kputs
     mov rdi, [rel timer_ticks]
-    call kput_dec
+    call [rel jt_kput_dec]
     mov edi, 10
     call kputc
     dec ebx
@@ -139,6 +145,7 @@ selftest_pit:
 %include "kernel/memtest.asm"
 %include "kernel/sched.asm"
 %include "kernel/tasktest.asm"
+%include "kernel/symbols.asm"
 
 msg_long_mode  db "[boot] long mode ok", 10, 0
 msg_image_ok   db "[kernel] image ok", 10, 0
@@ -151,6 +158,7 @@ test_pit       db "test=pit", 0
 test_ud        db "test=ud", 0
 test_mem       db "test=mem", 0
 test_tasks     db "test=tasks", 0
+test_syms      db "test=syms", 0
 
 KERNEL_END_MAGIC equ 0x444e454552544956       ; "VITREEND"
 align 8

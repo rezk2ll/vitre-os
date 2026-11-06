@@ -203,6 +203,7 @@ sched_switch:
 ; in:   none
 ; out:  one "[task] id name state ticks" line per task on the log
 ; clobbers: caller-saved
+; patchable: yes
 sched_list:
     push rbx
     push r12
@@ -215,7 +216,7 @@ sched_list:
     lea rdi, [rel sched_msg_task]
     call kputs
     mov edi, r12d
-    call kput_dec
+    call [rel jt_kput_dec]
     mov edi, ' '
     call kputc
     lea rdi, [rbx + TASK_NAME]
@@ -227,7 +228,7 @@ sched_list:
 .state:
     call kputs
     mov rdi, [rbx + TASK_TICKS]
-    call kput_dec
+    call [rel jt_kput_dec]
     mov edi, 10
     call kputc
 .next:

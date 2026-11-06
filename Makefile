@@ -25,18 +25,30 @@ layout = $(shell awk '$$1 == "$(1)" { print $$3 }' boot/layout.inc)
 $(BUILD)/stage1.bin: boot/stage1.asm | $(BUILD)
 	$(ASM) -o $@ $<
 
-$(BUILD)/kernel.bin: kernel/main.asm | $(BUILD)
+SRCS := $(shell find boot kernel drivers glass lib -name '*.asm' -o -name '*.inc')
+GEN  := $(BUILD)/gen/.stamp
+
+# jump table, symbol table and source area; gen.py rewrites a file only when
+# its content changes
+$(GEN): $(SRCS) tools/gen.py | $(BUILD)
+	$(PY) tools/gen.py
+	touch $@
+
+$(BUILD)/kernel.bin: kernel/main.asm $(GEN) | $(BUILD)
 	$(ASM) -o $@ $<
 
 $(BUILD)/stage2.bin: boot/stage2.asm $(BUILD)/kernel.bin | $(BUILD)
 	$(ASM) -DKERNEL_SECTORS=$$(( ($$(stat -c %s $(BUILD)/kernel.bin) + 511) / 512 )) -o $@ $<
 
-$(IMG): $(BUILD)/stage1.bin $(BUILD)/stage2.bin $(BUILD)/kernel.bin
+$(IMG): $(BUILD)/stage1.bin $(BUILD)/stage2.bin $(BUILD)/kernel.bin $(GEN)
+	test $$(stat -c %s $(BUILD)/kernel.bin) -le $$(( ($(call layout,SRC_LBA) - $(call layout,KERNEL_LBA)) * 512 ))
+	test $$(stat -c %s $(BUILD)/gen/src.bin) -le $$(( $(call layout,SRC_SECTORS) * 512 ))
 	rm -f $@
 	truncate -s 4M $@
 	dd if=$(BUILD)/stage1.bin of=$@ conv=notrunc status=none
 	dd if=$(BUILD)/stage2.bin of=$@ bs=512 seek=$(call layout,STAGE2_LBA) conv=notrunc status=none
 	dd if=$(BUILD)/kernel.bin of=$@ bs=512 seek=$(call layout,KERNEL_LBA) conv=notrunc status=none
+	dd if=$(BUILD)/gen/src.bin of=$@ bs=512 seek=$(call layout,SRC_LBA) conv=notrunc status=none
 
 # the test harness reads text off screendumps with the same glyphs
 $(BUILD)/font.bin: glass/font.asm | $(BUILD)

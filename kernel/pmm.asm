@@ -169,6 +169,7 @@ page_free:
 ; in:   none
 ; out:  E820 map and free memory on the log
 ; clobbers: caller-saved
+; patchable: yes
 pmm_log:
     push rbx
     push r12
@@ -189,7 +190,7 @@ pmm_log:
     lea rdi, [rel pmm_msg_type]
     call kputs
     mov edi, [rbx + 16]
-    call kput_dec
+    call [rel jt_kput_dec]
     mov edi, 10
     call kputc
     add rbx, 24
@@ -199,11 +200,11 @@ pmm_log:
     lea rdi, [rel pmm_msg_free]
     call kputs
     mov rdi, [rel pmm_free_pages]
-    call kput_dec
+    call [rel jt_kput_dec]
     lea rdi, [rel pmm_msg_of]
     call kputs
     mov rdi, [rel pmm_total_pages]
-    call kput_dec
+    call [rel jt_kput_dec]
     lea rdi, [rel pmm_msg_pages]
     call kputs
     add rsp, 8

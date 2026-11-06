@@ -64,3 +64,7 @@ AZERTY (French) is the default layout, QWERTY (US) is chosen with `kbd=qwerty` o
 ## D15. Scheduler
 
 Kernel tasks only, round-robin, preempted by the PIT every 10 ms. A task is a slot in a fixed table of 32 with a 16 KiB stack from the page allocator; its saved state is the interrupt frame on its own stack, so `task_create` builds a fake frame and a switch is returning another frame (D6). `int 0x40` yields. A task ends by returning from its entry; its stack is freed by the next switch that runs on another stack. No FPU/SSE state is saved: kernel code does not use those registers. `kputs` runs with interrupts off so log lines from tasks never mix.
+
+## D16. Jump table and symbol table
+
+`tools/gen.py` runs before the kernel build. It walks `kernel/main.asm` through its includes, in image order, and reads every function header. A `; patchable: yes` function gets a `jt_<name>` qword slot holding its address; callers use `call [rel jt_<name>]`, and the build fails on any direct `call` or `jmp` to it. Every function with a header gets a 64-byte symbol record (address, size up to the next function, jump table slot, source offset, name), so the symbol table also names unpatchable code for the debugger. The generator is a host build helper, like the test harness: the kernel itself stays assembly. The first patchable functions are the log printers (`kput_dec`, `fb_log_mode`, `pmm_log`, `sched_list`), chosen because a broken patch to them shows up at once and cannot take down the exception handler, which prints its vector number on its own.

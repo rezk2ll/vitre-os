@@ -111,6 +111,7 @@ kput_hex:
 ; in:   rdi = unsigned value, printed in decimal
 ; out:  none
 ; clobbers: rax, rcx, rdx, rdi, rsi
+; patchable: yes
 kput_dec:
     sub rsp, 40
     lea rsi, [rsp + 31]

@@ -25,16 +25,17 @@ fb_init:
 ; in:   fb_init succeeded
 ; out:  "[fb] WxH" on the log
 ; clobbers: caller-saved
+; patchable: yes
 fb_log_mode:
     sub rsp, 8
     lea rdi, [rel fb_msg_mode]
     call kputs
     mov rdi, [rel fb_width]
-    call kput_dec
+    call [rel jt_kput_dec]
     mov edi, 'x'
     call kputc
     mov rdi, [rel fb_height]
-    call kput_dec
+    call [rel jt_kput_dec]
     mov edi, 10
     call kputc
     add rsp, 8
