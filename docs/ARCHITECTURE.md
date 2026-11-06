@@ -73,3 +73,16 @@ flowchart LR
 
 - `kernel/pmm.asm`: `page_alloc(n)` / `page_free(addr, n)` over a bitmap of 4 KiB pages built from E820. Physical addresses are usable directly through the identity map.
 - `kernel/heap.asm`: `kmalloc(size)` / `kfree(ptr)`, first fit over an address-ordered free list with 16-byte headers. It grows by at least 1 MiB of contiguous pages at a time.
+
+## Tasks
+
+- `kernel/sched.asm`: `task_create(entry, name, arg)`, `task_yield`, `task_exit`, `sched_list`. The boot code becomes task 0 `kernel`.
+
+```mermaid
+flowchart LR
+  pit[PIT IRQ every 1 ms] --> tick[sched_tick]
+  tick -->|slice left| same[resume same frame]
+  tick -->|slice over| sw[sched_switch]
+  yield[int 0x40] --> sw
+  sw -->|save frame, pick next ready, free dead stacks| next[resume next task frame]
+```

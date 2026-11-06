@@ -54,6 +54,7 @@ kernel_entry:
     call idt_init
     call pic_init
     call pit_init
+    call sched_init
     call kbd_init
     sti
     lea rdi, [rel msg_interrupts]
@@ -92,6 +93,11 @@ kernel_selftests:
     jnz .no_mem
     call selftest_mem
 .no_mem:
+    lea rdi, [rel test_tasks]
+    call cmdline_has
+    jnz .no_tasks
+    call selftest_tasks
+.no_tasks:
     add rsp, 8
     ret
 
@@ -131,6 +137,8 @@ selftest_pit:
 %include "kernel/pmm.asm"
 %include "kernel/heap.asm"
 %include "kernel/memtest.asm"
+%include "kernel/sched.asm"
+%include "kernel/tasktest.asm"
 
 msg_long_mode  db "[boot] long mode ok", 10, 0
 msg_image_ok   db "[kernel] image ok", 10, 0
@@ -142,6 +150,7 @@ msg_ticks      db "[timer] ticks=", 0
 test_pit       db "test=pit", 0
 test_ud        db "test=ud", 0
 test_mem       db "test=mem", 0
+test_tasks     db "test=tasks", 0
 
 KERNEL_END_MAGIC equ 0x444e454552544956       ; "VITREEND"
 align 8

@@ -61,10 +61,14 @@ section .text
 
 ; name: kputs
 ; in:   rdi = zero-terminated string
-; out:  none
+; out:  none; the string is written with interrupts off, so lines from
+;       different tasks do not mix
 ; clobbers: rax, rdx, rdi
 kputs:
+    pushfq
     push rbx
+    sub rsp, 8
+    cli
     mov rbx, rdi
 .next:
     movzx edi, byte [rbx]
@@ -74,7 +78,9 @@ kputs:
     inc rbx
     jmp .next
 .done:
+    add rsp, 8
     pop rbx
+    popfq
     ret
 
 ; name: kput_hex
