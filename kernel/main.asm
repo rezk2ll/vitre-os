@@ -52,14 +52,21 @@ kernel_entry:
     call idt_init
     call pic_init
     call pit_init
+    call kbd_init
     sti
     lea rdi, [rel msg_interrupts]
     call kputs
 
     call kernel_selftests
-.idle:
-    hlt
-    jmp .idle
+    lea rdi, [rel msg_echo]
+    call kputs
+.echo:
+    call kbd_getc
+    cmp eax, 0x80
+    jae .echo
+    mov edi, eax
+    call kputc
+    jmp .echo
 
 ; name: kernel_selftests
 ; in:   none
@@ -112,12 +119,14 @@ selftest_pit:
 %include "drivers/fb.asm"
 %include "glass/font.asm"
 %include "glass/console.asm"
+%include "drivers/keyboard.asm"
 
 msg_long_mode  db "[boot] long mode ok", 10, 0
 msg_image_ok   db "[kernel] image ok", 10, 0
 msg_image_bad  db "[kernel] image truncated", 10, 0
 msg_cmdline    db "[kernel] cmdline: ", 0
 msg_interrupts db "[kernel] interrupts on", 10, 0
+msg_echo       db "[kbd] echo ready", 10, 0
 msg_ticks      db "[timer] ticks=", 0
 test_pit       db "test=pit", 0
 test_ud        db "test=ud", 0
