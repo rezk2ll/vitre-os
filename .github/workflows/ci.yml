@@ -1,0 +1,29 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends nasm qemu-system-x86
+          nasm -v | grep -E 'version 2\.16\.01( |$)'
+          qemu-system-x86_64 --version
+      - name: Build
+        run: make
+      - name: Test
+        run: make test
+      - name: Upload serial logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: serial-logs
+          path: build/logs/
