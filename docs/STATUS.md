@@ -2,7 +2,7 @@
 
 ## Current milestone
 
-M6 done. Next: M7, the shell.
+M7 in progress: shell with the first commands. Next: `uptime`, `layout`, `reboot`.
 
 ## Milestones
 
@@ -14,6 +14,7 @@ M6 done. Next: M7, the shell.
 - Keyboard layouts: AZERTY by default with AltGr and Latin-1 accented characters, `kbd=qwerty` for US.
 - M5: done. Preemptive round-robin scheduler for kernel tasks (10 ms slices, `int 0x40` yield). `test=tasks` runs two tasks whose output interleaves, then lists the task table.
 - M6: done. `tools/gen.py` builds the jump table, symbol table and source area from function headers. Patchable functions are only called through `jt_*` slots. The source area sits on disk at LBA 2048 and is read at boot with ATA PIO. `test=syms` dumps both and the test checks them against the NASM map.
+- M7: in progress. The kernel ends in a shell with `help`, `clear`, `mem`, `tasks` and `syms`. Backspace edits the line, Ctrl+C drops it, Ctrl+L clears the screen.
 
 ## Stubs
 

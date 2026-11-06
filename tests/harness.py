@@ -15,6 +15,7 @@ BUILD = os.path.join(ROOT, "build")
 IMG = os.path.join(BUILD, "vitre.img")
 LOGS = os.path.join(BUILD, "logs")
 QEMU = os.environ.get("QEMU", "qemu-system-x86_64")
+SHELL_READY = r"\[shell\] ready.*\r\nvitre> "
 
 
 class TestFailure(Exception):
@@ -173,11 +174,11 @@ class Vm:
                 raise TestFailure(f"screen never matched {pattern!r}; screen:\n{text}")
             time.sleep(0.2)
 
-    def sendkeys(self, text, delay=0.03):
+    def sendkeys(self, text, delay=0.03, layout=None):
+        layout = layout or ("qwerty" if "kbd=qwerty" in self.cmdline.split() else "azerty")
         for ch in text:
             # QEMU queues keys behind each release, so its 100 ms default
             # hold time would set the typing speed
-            layout = "qwerty" if "kbd=qwerty" in self.cmdline.split() else "azerty"
             self.qmp("send-key", keys=[{"type": "qcode", "data": k} for k in qcodes(ch, layout)],
                      **{"hold-time": 10})
             time.sleep(delay)
