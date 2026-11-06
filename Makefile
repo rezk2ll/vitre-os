@@ -16,8 +16,9 @@ $(BUILD):
 	mkdir -p $@
 
 # NASM's -MD drops %include'd files when combined with -o, so the dependency
-# list comes from a separate -M pass.
-ASM = $(NASM) -f bin -I. -M -MP -MT $@ $< > $@.d && $(NASM) -f bin -I.
+# list comes from a separate -M pass. It goes through a temp file: a failed
+# pass would otherwise leave an empty .d and hide every include from make.
+ASM = $(NASM) -f bin -I. -M -MP -MT $@ $< > $@.d.tmp && mv $@.d.tmp $@.d && $(NASM) -f bin -I.
 
 layout = $(shell awk '$$1 == "$(1)" { print $$3 }' boot/layout.inc)
 
