@@ -24,6 +24,10 @@ kernel_entry:
 
     lea rdi, [rel msg_long_mode]
     call kputs
+    call fb_init
+    jc .headless
+    call fb_log_mode
+.headless:
     ; the last qword of the image proves stage 2 loaded all of it
     mov rax, KERNEL_END_MAGIC
     cmp [rel kernel_end_magic], rax
@@ -101,6 +105,8 @@ selftest_pit:
 %include "drivers/pit.asm"
 %include "drivers/fwcfg.asm"
 %include "lib/string.asm"
+%include "drivers/fb.asm"
+%include "glass/font.asm"
 
 msg_long_mode  db "[boot] long mode ok", 10, 0
 msg_image_ok   db "[kernel] image ok", 10, 0
