@@ -2,7 +2,7 @@
 
 ## Current milestone
 
-M7 done. Next: M8, the Forge assembler.
+M8 done. Next: M9, the Forge editor and live patching.
 
 ## Milestones
 
@@ -15,6 +15,7 @@ M7 done. Next: M8, the Forge assembler.
 - M5: done. Preemptive round-robin scheduler for kernel tasks (10 ms slices, `int 0x40` yield). `test=tasks` runs two tasks whose output interleaves, then lists the task table.
 - M6: done. `tools/gen.py` builds the jump table, symbol table and source area from function headers. Patchable functions are only called through `jt_*` slots. The source area sits on disk at LBA 2048 and is read at boot with ATA PIO. `test=syms` dumps both and the test checks them against the NASM map.
 - M7: done. The kernel ends in a shell with `help`, `clear`, `mem`, `tasks`, `syms`, `uptime`, `layout` and `reboot`. Backspace edits the line, Ctrl+C drops it, Ctrl+L clears the screen.
+- M8: done. Forge, the in-kernel assembler for the Vitre dialect, runs multi-pass with growing jumps and resolves names against the module and then the kernel label table. The `forge` command assembles every module in the source area at its linked address and compares the bytes with the running kernel: `kernel/report.asm` matches NASM byte for byte.
 
 ## Stubs
 
@@ -24,5 +25,5 @@ M7 done. Next: M8, the Forge assembler.
 
 - stage1: 512 bytes
 - stage2: 16 KiB slot (code is under 1 KiB)
-- kernel: 20496 bytes (4 KiB interrupt stubs and table, 3.5 KiB font, 7 KiB symbol table)
-- source area: 16777 bytes
+- kernel: 45776 bytes (4 KiB interrupt stubs and table, 3.5 KiB font, symbol and label tables, Forge)
+- source area: 3047 bytes
