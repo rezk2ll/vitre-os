@@ -56,3 +56,7 @@ Scancode set 1, which the i8042 produces by default under QEMU. Printable keys m
 ## D13. Physical page allocator
 
 A bitmap with one bit per 4 KiB page below 4 GiB (128 KiB of .bss), built from the E820 usable ranges. Everything below the end of the kernel's .bss stays reserved. `page_alloc` scans for a run of N free pages from a rotating hint, which keeps the code short and gives contiguous runs for DMA buffers later (e1000 rings). Memory above 4 GiB is ignored because the identity map stops there.
+
+## D14. Keyboard layouts
+
+AZERTY (French) is the default layout, QWERTY (US) is chosen with `kbd=qwerty` on the command line. Each layout has a plain, a Shift and an AltGr map indexed by scancode. Non-ASCII characters are Latin-1 key codes (0xa0 to 0xff), so every character stays one byte; the font covers the Latin-1 characters on the French keyboard and draws '?' for the rest. Dead keys are not composed: `^` and `¨` type themselves.
