@@ -2,9 +2,9 @@
 ; of the call chain that last drew it. The framebuffer primitives record each
 ; draw (prov_rect) and move the map with the pixels on a scroll (prov_scroll).
 ;
-; A chain is the drawing task and up to PROV_DEPTH return addresses, starting
-; with the primitive's own return slot. Equal chains share one id; when the
-; table is full new chains get 0.
+; A chain is the drawing task and up to PROV_DEPTH return addresses: the
+; primitive's own return slot, then the frames glass/provwalk.asm finds above
+; it. Equal chains share one id; when the table is full new chains get 0.
 
 PROV_DEPTH  equ 6
 PROV_CHAINS equ 4096                ; a power of two
@@ -166,6 +166,7 @@ prov_chain:
     mov rdi, [rbx]
     mov [rel prov_tmp + PROV_FRAMES], rdi
     mov dword [rel prov_tmp + PROV_COUNT], 1
+    call prov_walk
     jmp prov_intern
 
 ; name: prov_intern
