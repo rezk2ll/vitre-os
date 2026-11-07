@@ -661,6 +661,7 @@ shell_commands:
     shell_command "trust", cmd_trust, "trust a CA's P-256 key: trust <x y in hex>"
     shell_command "crypto", cmd_crypto, "run a primitive on hex input: crypto sha256|hmac|hkdf|chacha20|poly1305|seal|open|x25519|label|pmul|ninv|ecmul|ecdsa|x509|x509host <hex>..."
     shell_command "forge", forge_check, "reassemble the patchable modules"
+    shell_command "files", cmd_files, "browse files: Enter edits, r runs, n new, Del deletes"
     shell_command "ls", cmd_ls, "list the files on disk"
     shell_command "cat", cmd_cat, "print a file: cat <file>"
     shell_command "rm", cmd_rm, "delete a user file: rm <file>"

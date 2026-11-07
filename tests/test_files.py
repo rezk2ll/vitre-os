@@ -64,3 +64,56 @@ def test_saved_file_survives_reboot():
                 raise TestFailure(f"cat after reboot: {out!r}")
     finally:
         os.remove(disk)
+
+
+def listed(vm):
+    """The file names the file manager shows, top to bottom."""
+    return [m.group(1) for m in (re.match(r" (\S+) +\d+ bytes", line)
+                                 for line in vm.screen_text()) if m]
+
+
+def select(vm, name):
+    for _ in range(len(listed(vm))):
+        vm.press("up")
+    for _ in range(listed(vm).index(name)):
+        vm.press("down")
+
+
+def test_file_manager():
+    with Vm("fileman") as vm:
+        pos = vm.wait_for(SHELL_READY).end()
+        vm.sendkeys("files\n")
+        vm.wait_screen(r"Vitre files")
+        vm.wait_screen(r"kernel/report\.asm +\d+ bytes, kernel module")
+        names = listed(vm)
+        if not {"hello.asm", "welcome.txt"} <= set(names):
+            raise TestFailure(f"listed: {names}")
+        select(vm, "hello.asm")
+        vm.sendkeys("r")
+        vm.wait_screen(r"Hello, world!")
+        vm.sendkeys(" ")
+        vm.wait_screen(r"Vitre files")
+        select(vm, "welcome.txt")
+        vm.sendkeys("r")
+        vm.wait_screen(r"only \.asm files run")
+        vm.sendkeys("n")
+        vm.wait_screen(r"new file name")
+        vm.sendkeys("note.txt\n")
+        vm.wait_for(r"\[edit\] note\.txt: opened", start=pos)
+        vm.sendkeys("hi")
+        vm.ctrl("s")
+        vm.wait_screen(r"stored, save writes it to disk")
+        vm.ctrl("q")
+        vm.wait_screen(r"note\.txt +2 bytes")
+        select(vm, "note.txt")
+        vm.sendkeys("d")
+        vm.wait_screen(r"delete this file\?")
+        vm.sendkeys("y")
+        vm.wait_screen(r"removed")
+        if "note.txt" in listed(vm):
+            raise TestFailure(f"after delete: {listed(vm)}")
+        select(vm, "kernel/report.asm")
+        vm.sendkeys("d")
+        vm.wait_screen(r"kernel modules cannot be deleted")
+        vm.sendkeys("q")
+        vm.wait_screen(r"^vitre>")

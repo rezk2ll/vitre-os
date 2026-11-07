@@ -210,6 +210,7 @@ selftest_pit:
 %include "apps/taskcmd.asm"
 %include "apps/files.asm"
 %include "apps/run.asm"
+%include "apps/fileman.asm"
 %include "glass/disfmt.asm"
 %include "glass/dis.asm"
 %include "glass/disops.asm"
