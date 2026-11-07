@@ -4,6 +4,7 @@
 
 TLS_WAIT_MS   equ 5000
 TLS_HS_MAX    equ 65536
+TLS_OUT_MAX   equ 4096
 TLS_HANDSHAKE equ 22
 TLS_CCS       equ 20
 TLS_APP       equ 23
@@ -35,17 +36,143 @@ tls_handshake:
     jne .fail
     call tls_server_hello
     jc .done
+    lea rax, [rel tls_hs_order]
+    mov [rsp], rax
+.msg:
     call tls_next_msg
     jc .done
-    cmp al, 8                       ; EncryptedExtensions
+    mov rdx, [rsp]
+    cmp al, [rdx]
     jne .fail
+    inc qword [rsp]
+    cmp al, 20                      ; Finished
+    je .finished
     call tls_hs_add
+    jmp .msg
+.finished:
+    call tls_finished
+    jmp .done
+.fail:
+    stc
+.done:
+    lea rsp, [rsp + 8]
+    ret
+
+; name: tls_finished
+; in:   rsi = the server's Finished message, ecx = its length
+; out:  it checked, the client's Finished sent, and both directions on
+;       the application keys; CF=1 if it is wrong or the send failed
+; clobbers: caller-saved
+tls_finished:
+    push rbx
+    push r12
+    sub rsp, 8
+    mov rbx, rsi
+    mov r12d, ecx
+    cmp r12d, 4 + 32
+    jne .fail
+    call tls_transcript
+    lea rdi, [rel tls_s_hs]
+    lea r8, [rel tls_tmp]
+    call tls_verify_data
+    lea rsi, [rel tls_tmp]
+    lea rdi, [rbx + 4]
+    mov ecx, 32
+    repe cmpsb
+    jne .fail
+    mov rsi, rbx
+    mov ecx, r12d
+    call tls_hs_add
+    lea rdx, [rel tls_zero]         ; the master secret; it needs no transcript
+    call tls_advance
+    call tls_transcript
+    lea rdi, [rel tls_secret]
+    lea rsi, [rel tls_l_cap]
+    lea r8, [rel tls_c_ap]
+    call tls_derive
+    lea rdi, [rel tls_secret]
+    lea rsi, [rel tls_l_sap]
+    lea r8, [rel tls_s_ap]
+    call tls_derive
+    mov dword [rel tls_buf], 0x20000014     ; Finished, 32 bytes
+    lea rdi, [rel tls_c_hs]
+    lea r8, [rel tls_buf + 4]
+    call tls_verify_data
+    lea rdi, [rel tls_wr]
+    lea rsi, [rel tls_c_hs]
+    call tls_keys
+    lea rsi, [rel tls_buf]
+    mov ecx, 4 + 32
+    mov dl, TLS_HANDSHAKE
+    call tls_send
+    jc .done
+    lea rdi, [rel tls_rd]
+    lea rsi, [rel tls_s_ap]
+    call tls_keys
+    lea rdi, [rel tls_wr]
+    lea rsi, [rel tls_c_ap]
+    call tls_keys
     clc
     jmp .done
 .fail:
     stc
 .done:
     lea rsp, [rsp + 8]
+    pop r12
+    pop rbx
+    ret
+
+; name: tls_verify_data
+; in:   rdi = handshake traffic secret, r8 = 32-byte output, tls_hash
+; out:  the Finished verify data: HMAC(its finished key, tls_hash)
+; clobbers: caller-saved
+tls_verify_data:
+    push r8
+    lea rsi, [rel tls_l_finished]
+    xor ecx, ecx
+    lea r8, [rel tls_tmp2]
+    mov r9d, 32
+    call tls_expand_label
+    pop r8
+    lea rdi, [rel tls_tmp2]
+    mov esi, 32
+    lea rdx, [rel tls_hash]
+    mov ecx, 32
+    jmp hmac_sha256
+
+; name: tls_send
+; in:   rsi = content, ecx = its length (at most TLS_OUT_MAX), dl = its type
+; out:  it sent as one record sealed with tls_wr; CF=1 if the send failed
+; clobbers: caller-saved
+tls_send:
+    push r12
+    push r13
+    sub rsp, 8
+    movzx r13d, dl
+    lea rdi, [rel tls_out + 5]
+    lea r12d, [rcx + 1]             ; the content and its type
+    rep movsb
+    mov [rdi], r13b
+    lea rdi, [rel tls_out]
+    mov dword [rdi], TLS_APP | 0x0303 << 8
+    lea eax, [r12 + 16]
+    xchg al, ah
+    mov [rdi + 3], ax
+    lea rdi, [rel tls_wr]
+    call tls_nonce
+    lea rdi, [rel tls_wr + TLS_KEY]
+    lea rsi, [rel tls_nonce_buf]
+    lea rdx, [rel tls_out]
+    mov ecx, 5
+    lea r8, [rel tls_out + 5]
+    mov r9d, r12d
+    call aead_seal
+    lea rsi, [rel tls_out]
+    lea ecx, [r12 + 5 + 16]
+    call tcp_write
+    lea rsp, [rsp + 8]
+    pop r13
+    pop r12
     ret
 
 ; name: tls_server_hello
@@ -252,12 +379,14 @@ tls_next_msg:
 ;       does not decrypt, or a timeout
 ; clobbers: caller-saved
 tls_read_record:
-    mov eax, [rel tls_hs_pos]
-    cmp eax, [rel tls_hs_len]
-    jne .read
-    xor eax, eax                    ; all used: start the buffer over
-    mov [rel tls_hs_pos], eax
-    mov [rel tls_hs_len], eax
+    mov esi, [rel tls_hs_pos]       ; move what is left to the front
+    mov ecx, [rel tls_hs_len]
+    sub ecx, esi
+    mov [rel tls_hs_len], ecx
+    mov dword [rel tls_hs_pos], 0
+    lea rdi, [rel tls_hs]
+    add rsi, rdi
+    rep movsb
 .read:
     call tls_record
     jc .ret
@@ -674,7 +803,11 @@ tls_l_chs      db "c hs traffic", 0
 tls_l_shs      db "s hs traffic", 0
 tls_l_key      db "key", 0
 tls_l_iv       db "iv", 0
-tls_msg_ok     db "[tls] handshake keys work: encrypted extensions read", 10, 0
+tls_l_finished db "finished", 0
+tls_l_cap      db "c ap traffic", 0
+tls_l_sap      db "s ap traffic", 0
+tls_hs_order   db 8, 11, 15, 20     ; extensions, certificate, its proof, Finished
+tls_msg_ok     db "[tls] handshake done; the certificate is NOT verified", 10, 0
 tls_msg_failed db "[tls] handshake failed", 10, 0
 tls_msg_usage  db "usage: tls <host> <port>", 10, 0
 
@@ -687,6 +820,7 @@ tls_rd_on     resb 1
 tls_got       resb 1
 alignb 8
 tls_rd        resb TLS_BLOCK
+tls_wr        resb TLS_BLOCK
 tls_nonce_buf resb 12
 tls_ctx       resb SHA_CTX_SIZE
 tls_tmpctx    resb SHA_CTX_SIZE
@@ -701,9 +835,13 @@ tls_shared    resb 32
 tls_secret    resb 32
 tls_c_hs      resb 32
 tls_s_hs      resb 32
+tls_c_ap      resb 32
+tls_s_ap      resb 32
 tls_hash      resb 32
 tls_tmp       resb 32
+tls_tmp2      resb 32
 tls_label     resb 2 + 1 + 6 + 32 + 1 + 32
 tls_buf       resb 512
 tls_hs        resb TLS_HS_MAX
+tls_out       resb 5 + TLS_OUT_MAX + 1 + 16
 section .text
