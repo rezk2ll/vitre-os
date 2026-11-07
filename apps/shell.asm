@@ -372,6 +372,7 @@ shell_commands:
     shell_command "glass", cmd_glass, "watch a task live: glass <task id> [0xaddr|label], or glass patch"
     shell_command "break", cmd_break, "pause the task that runs it: break <0xaddr|label>"
     shell_command "syms", sym_dump, "dump the symbol table"
+    shell_command "lspci", cmd_lspci, "list PCI devices"
     shell_command "forge", forge_check, "reassemble the patchable modules"
     shell_command "edit", cmd_edit, "edit a module: edit <module>"
     shell_command "patch", cmd_patch, "patch a module live: patch <module>"

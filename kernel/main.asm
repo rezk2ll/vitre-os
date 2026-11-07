@@ -143,6 +143,7 @@ selftest_pit:
 %include "kernel/debug.asm"
 %include "kernel/breakpoint.asm"
 %include "drivers/ata.asm"
+%include "drivers/pci.asm"
 %include "kernel/report.asm"
 %include "kernel/symbols.asm"
 %include "forge/lex.asm"
