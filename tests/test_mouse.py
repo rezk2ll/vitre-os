@@ -80,3 +80,29 @@ def test_editor_follows_clicks_and_the_wheel():
             time.sleep(0.2)
         wheel(vm, "wheel-up", 20)                 # back to the edited line, on top
         vm.wait_screen(r"\A; Xname: kput_dec")
+
+
+def gone(vm, text):
+    deadline = time.time() + 10
+    while text in vm.screen_text():
+        if time.time() > deadline:
+            raise TestFailure(f"{text!r} still on the screen")
+        time.sleep(0.2)
+
+
+def test_shell_scrolls_back():
+    with Vm("scrollback") as vm:
+        vm.wait_for(SHELL_READY)
+        run(vm, "help", r"shutdown")
+        run(vm, "help", r"shutdown")
+        gone(vm, "[boot] long mode ok")
+        for _ in range(4):
+            vm.press("pgup")
+        vm.wait_screen(r"\[boot\] long mode ok")
+        wheel(vm, "wheel-down", 60)
+        gone(vm, "[boot] long mode ok")
+        wheel(vm, "wheel-up", 60)
+        vm.wait_screen(r"\[boot\] long mode ok")
+        vm.sendkeys("x")                          # a key brings the prompt back
+        vm.wait_screen(r"vitre> x")
+        gone(vm, "[boot] long mode ok")

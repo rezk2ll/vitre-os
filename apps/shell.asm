@@ -35,7 +35,8 @@ shell_run:
 ; name: shell_readline
 ; in:   rdi = buffer of SHELL_LINE_MAX bytes
 ; out:  zero-terminated line in the buffer, rax = length; the line is echoed.
-;       Backspace erases, Ctrl+C drops the line, Ctrl+L clears the screen.
+;       Backspace erases, Ctrl+C drops the line, Ctrl+L clears the screen;
+;       PgUp, PgDn and the wheel scroll back through earlier output.
 ; clobbers: caller-saved
 shell_readline:
     push rbx
@@ -44,7 +45,7 @@ shell_readline:
     mov rbx, rdi
     xor r12d, r12d
 .key:
-    call kbd_getc
+    call sb_getc
     cmp eax, 10
     je .enter
     cmp eax, 8

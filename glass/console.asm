@@ -32,6 +32,13 @@ console_init:
 ; out:  rectangle filled with the background, cursor at 0,0
 ; clobbers: caller-saved
 console_clear:
+    lea rax, [rel kernel_console]
+    cmp rdi, rax
+    jne .clear
+    push rdi
+    call sb_clear
+    pop rdi
+.clear:
     mov qword [rdi + CON_CX], 0
     mov qword [rdi + CON_CY], 0
     mov r8, [rdi + CON_BG]
@@ -50,6 +57,17 @@ console_clear:
 console_putc:
     push rbx
     mov rbx, rdi
+    cmp dword [rel sb_view], 0
+    je .live
+    lea rax, [rel kernel_console]
+    cmp rbx, rax
+    jne .live
+    push rsi                        ; output brings the newest lines back
+    push rsi
+    call sb_live
+    pop rsi
+    pop rsi
+.live:
     cmp esi, 10
     je .newline
     cmp esi, 13
@@ -85,6 +103,11 @@ console_putc:
     ret
 .draw:                              ; esi at the cursor of console rbx
     mov edx, esi
+    lea rax, [rel kernel_console]
+    cmp rbx, rax
+    jne .glyph
+    call sb_put
+.glyph:
     mov rdi, [rbx + CON_CX]
     shl rdi, 3
     add rdi, [rbx + CON_X]
@@ -102,6 +125,12 @@ console_putc:
 console_scroll:
     push rbx
     mov rbx, rdi
+    lea rax, [rel kernel_console]
+    cmp rbx, rax
+    jne .move
+    mov edi, 1
+    call sb_advance
+.move:
     mov rdi, [rbx + CON_X]
     mov rsi, [rbx + CON_Y]
     mov rdx, [rbx + CON_COLS]
