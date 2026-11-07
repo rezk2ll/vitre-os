@@ -2,7 +2,7 @@
 
 ## Current milestone
 
-M11 done. Next: M12, UDP, DHCP and DNS.
+M12 done. Next: M13, TCP.
 
 ## Milestones
 
@@ -19,6 +19,7 @@ M11 done. Next: M12, UDP, DHCP and DNS.
 - M9: done. `edit <module>` opens a full-screen editor on a module of the source area (Ctrl+S store, Ctrl+F find, Ctrl+Q quit). `patch <module>` assembles it into fresh pages and swaps its jump table slots under `cli`; `rollback` restores them. A CPU exception in new code within 10 s of a patch rolls it back and returns to the prompt. `save` writes the source area to disk, and boot re-patches every edited module.
 - M10: done. `pause`, `resume` and `step` control a task (`spin` starts one to try them on). `break` sets one-shot int3 breakpoints. `dis` disassembles kernel code, and a test checks it against ndisasm over two dozen functions. `glass <task>` shows a live full-screen view: registers with changes highlighted, code around RIP, the stack with symbols, and memory. Its keys pause, step, or open the module under RIP in the editor.
 - M11: done. `lspci` lists PCI devices. The e1000 driver brings the card up with interrupt-driven receive, and `net` shows the MAC, link and frame counters. ARP answers for 10.0.2.15 and caches senders (`arp`). IPv4 and ICMP echo answer pings, and `ping 10.0.2.2` gets replies from QEMU's gateway.
+- M12: done. UDP carries a DHCP client that runs at boot and takes the address, mask, gateway and DNS server from the lease (`dhcp` asks again). `host example.com` resolves A records through that server.
 
 ## Stubs
 
@@ -28,5 +29,5 @@ M11 done. Next: M12, UDP, DHCP and DNS.
 
 - stage1: 512 bytes
 - stage2: 16 KiB slot (code is under 1 KiB)
-- kernel: 80816 bytes (4 KiB interrupt stubs and table, 3.5 KiB font, symbol and label tables, Forge, editor, disassembler, Glass, network stack)
+- kernel: 84728 bytes (4 KiB interrupt stubs and table, 3.5 KiB font, symbol and label tables, Forge, editor, disassembler, Glass, network stack)
 - source area: 3047 bytes

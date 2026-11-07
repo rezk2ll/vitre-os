@@ -101,3 +101,11 @@ A patchable module is a whole file written in the Vitre dialect (docs/DIALECT.md
 - Sending to a host with no ARP entry resolves it first, but only outside an IRQ (interrupts on). From the IRQ path the packet is dropped instead, because waiting there would stop the clock.
 - Addresses and ports stay in network byte order everywhere, as they sit in the packet. Only printing and parsing convert.
 - Fragmented IPv4 packets are dropped. Nothing the later milestones fetch needs reassembly.
+
+## D22. DHCP and DNS
+
+- The static QEMU addresses stay as defaults, so the stack works before the lease and if no DHCP server answers. The client sends from that address rather than 0.0.0.0, which QEMU accepts.
+- Replies are asked for by broadcast, and IPv4 accepts packets to 255.255.255.255 for that reason.
+- One query in flight at a time, with fixed client ports and transaction IDs. A lookup waits up to 2 s per try, 3 tries.
+- DNS takes the first A record of the answer and skips CNAMEs, since recursive servers include the final A records in the same answer.
+- UDP checksums are 0 on send, as IPv4 allows, and are not checked on receive.
