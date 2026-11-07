@@ -430,7 +430,7 @@ dt_tiles:
     dt_tile dt_l_term, 8, 0, 0, 0x002e3440, '>'
     dt_tile dt_l_web, 7, cmd_browse, dt_empty, 0x005e81ac, 'W'
     dt_tile dt_l_glass, 5, cmd_glass, dt_empty, 0x00b48ead, 'G'
-    dt_tile dt_l_edit, 6, cmd_edit, dt_edit_path, 0x00a3be8c, 'E'
+    dt_tile dt_l_files, 5, cmd_files, dt_empty, 0x00a3be8c, 'F'
     dt_tile dt_l_top, 7, cmd_top, dt_empty, 0x0088c0d0, 'M'
     dt_tile dt_l_snake, 5, cmd_run, dt_snake_path, 0x00ebcb8b, 'S'
     dt_tile dt_l_reboot, 6, cmd_reboot, 0, 0x00d08770, 'R'
@@ -439,7 +439,7 @@ dt_tiles:
 dt_l_term        db "Terminal", 0
 dt_l_web         db "Browser", 0
 dt_l_glass       db "Glass", 0
-dt_l_edit        db "Editor", 0
+dt_l_files       db "Files", 0
 dt_l_top         db "Monitor", 0
 dt_l_snake       db "Snake", 0
 dt_l_reboot      db "Reboot", 0
@@ -450,7 +450,6 @@ dt_msg_hint_len  equ $ - dt_msg_hint
                  db 0
 dt_clock_layout  db "####-##-## ##:##", 0
 dt_clock_len     equ $ - dt_clock_layout - 1
-dt_edit_path     db "kernel/report.asm", 0
 dt_snake_path    db "snake.asm", 0
 
 section .bss
