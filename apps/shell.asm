@@ -377,6 +377,7 @@ shell_commands:
     shell_command "arp", cmd_arp, "resolve an address: arp [a.b.c.d], or list the cache"
     shell_command "ping", cmd_ping, "send 4 echo requests: ping a.b.c.d"
     shell_command "dhcp", cmd_dhcp, "ask for a new address lease"
+    shell_command "host", cmd_host, "look up a name: host example.com"
     shell_command "forge", forge_check, "reassemble the patchable modules"
     shell_command "edit", cmd_edit, "edit a module: edit <module>"
     shell_command "patch", cmd_patch, "patch a module live: patch <module>"
