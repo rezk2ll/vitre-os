@@ -81,7 +81,65 @@ cmd_run:
     pop rbx
     ret
 
-run_msg_prefix db "[run] ", 0
+; name: run_fault
+; in:   rdi = frame of a CPU exception
+; out:  rax = frame to resume, the shell's resume point, when the shell was
+;       running a program: its pages freed and the fault on the log. CF=1
+;       and rdi = the frame otherwise
+; clobbers: caller-saved
+run_fault:
+    push rbx
+    push rbp
+    mov rbp, rsp
+    and rsp, -16                    ; any stack depth
+    mov rbx, rdi
+    cmp qword [rel run_code], 0
+    je .fatal
+    cmp qword [rel shell_resume_rip], 0
+    je .fatal
+    test qword [rbx + INT_FRAME_RFLAGS], 0x200  ; IF=0: inside an IRQ handler,
+    jz .fatal                                   ; whose EOI would be lost
+    mov eax, [rel sched_current]
+    cmp eax, [rel shell_resume_task]
+    jne .fatal
+    lea rdi, [rel run_msg_fault]
+    call kputs
+    mov rax, [rbx + INT_FRAME_VECTOR]
+    lea rdi, [rel exc_names]
+    lea rdi, [rdi + rax * 4]
+    call kputs
+    lea rdi, [rel run_msg_at]
+    call kputs
+    mov rdi, [rbx + INT_FRAME_RIP]
+    call kput_hex
+    lea rdi, [rel run_msg_stopped]
+    call kputs
+    mov rdi, [rel run_code]
+    mov esi, RUN_PAGES
+    call page_free
+    xor eax, eax
+    mov [rel run_code], rax
+    mov [rel run_code_end], rax
+    mov rax, [rel shell_resume_rip]
+    mov [rbx + INT_FRAME_RIP], rax
+    mov rax, [rel shell_resume_rsp]
+    mov [rbx + INT_FRAME_RSP], rax
+    mov rax, rbx
+    clc
+    jmp .return
+.fatal:
+    mov rdi, rbx
+    stc
+.return:
+    mov rsp, rbp
+    pop rbp
+    pop rbx
+    ret
+
+run_msg_prefix  db "[run] ", 0
+run_msg_fault   db 10, "[run] #", 0
+run_msg_at      db " at ", 0
+run_msg_stopped db ", program stopped", 10, 0
 
 section .bss
 alignb 8
