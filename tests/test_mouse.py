@@ -50,3 +50,33 @@ def test_pointer_follows_the_mouse():
         if pixel(vm, 612, 484) != (0, 0, 0):
             raise TestFailure("no pointer drawn at 612,484")
         run(vm, "help", r"mouse")
+
+
+def wheel(vm, way, notches):
+    for _ in range(notches):
+        for down in (True, False):
+            vm.qmp("input-send-event",
+                   events=[{"type": "btn", "data": {"down": down, "button": way}}])
+
+
+def test_editor_follows_clicks_and_the_wheel():
+    with Vm("editor_mouse") as vm:
+        vm.wait_for(SHELL_READY)
+        vm.sendkeys("edit kernel/report.asm\n")
+        vm.wait_screen(r"; Log printers[\s\S]*\n; name: kput_dec")
+        move(vm, -5000, -5000)
+        move(vm, 2 * 8 + 4, 3 * 16 + 8)           # the "n" of "; name: kput_dec"
+        for down in (True, False):
+            vm.qmp("input-send-event",
+                   events=[{"type": "btn", "data": {"down": down, "button": "left"}}])
+        move(vm, 900, 500)                        # off the text, so it reads cleanly
+        vm.sendkeys("X")
+        vm.wait_screen(r"\n; Xname: kput_dec")
+        wheel(vm, "wheel-down", 20)
+        deadline = time.time() + 10
+        while "Log printers" in vm.screen_text():
+            if time.time() > deadline:
+                raise TestFailure("the wheel did not scroll the editor")
+            time.sleep(0.2)
+        wheel(vm, "wheel-up", 20)                 # back to the edited line, on top
+        vm.wait_screen(r"\A; Xname: kput_dec")

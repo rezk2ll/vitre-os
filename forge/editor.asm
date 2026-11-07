@@ -1,6 +1,9 @@
 ; Forge editor: full-screen editing of one module of the source area.
 ; Ctrl+S stores the text back into the source area, where `patch` and
-; `save` pick it up. Ctrl+Q or Esc leaves.
+; `save` pick it up. Ctrl+Q or Esc leaves. A click puts the cursor on the
+; character under the pointer; the wheel moves it three lines a notch.
+
+ED_WHEEL_LINES equ 3
 
 ED_KEY_FIND  equ 6                  ; Ctrl+F
 ED_KEY_QUIT  equ 17                 ; Ctrl+Q
@@ -54,9 +57,13 @@ cmd_edit:
     mov rax, [rel kernel_console + CON_ROWS]
     dec rax
     mov [rel ed_rows], rax
+    call mouse_click                ; forget a click made before the editor
+    call mouse_scroll
 .key:
     call ed_render
-    call kbd_getc
+    call ed_input
+    test eax, eax
+    jz .key                         ; the mouse moved the cursor
     mov edi, eax
     call ed_key
     jnc .key
@@ -85,6 +92,87 @@ cmd_edit:
     add rsp, 8
     pop r12
     pop rbx
+    ret
+
+; name: ed_input
+; in:   none
+; out:  eax = the next key, or 0 once a click or the wheel moved the cursor
+; clobbers: caller-saved
+ed_input:
+    push rbx
+.wait:
+    call kbd_poll
+    jnz .ret
+    call mouse_click
+    jc .wheel
+    call ed_click
+    jnc .moved
+.wheel:
+    call mouse_scroll
+    test eax, eax
+    jnz .scroll
+    sti
+    hlt                             ; any IRQ, the mouse's included, wakes it
+    jmp .wait
+.scroll:
+    mov ebx, eax
+    js .up                          ; flags from the test above
+    imul ebx, ebx, ED_WHEEL_LINES
+.down:
+    call ed_down
+    dec ebx
+    jnz .down
+    jmp .moved
+.up:
+    neg ebx
+    imul ebx, ebx, ED_WHEEL_LINES
+.up_line:
+    call ed_up
+    dec ebx
+    jnz .up_line
+.moved:
+    xor eax, eax
+.ret:
+    pop rbx
+    ret
+
+; name: ed_click
+; in:   ed_top as last drawn
+; out:  ed_cur on the character under the pointer, or the end of its line;
+;       CF=1 if the pointer is on the status line
+; clobbers: rax, rcx, rdx, rdi, rsi
+ed_click:
+    mov eax, [rel mouse_y]
+    shr eax, 4
+    cmp rax, [rel ed_rows]
+    jae .out
+    mov esi, eax                    ; rows below the top line
+    mov rdi, [rel ed_top]
+.row:
+    test esi, esi
+    jz .line
+    call ed_line_end
+    cmp rax, [rel ed_len]
+    jae .line_of_rax                ; below the last line: stay on it
+    lea rdi, [rax + 1]
+    dec esi
+    jmp .row
+.line_of_rax:
+    mov rdi, rax
+    call ed_line_start
+    mov rdi, rax
+.line:
+    mov edx, [rel mouse_x]
+    shr edx, 3
+    add rdx, rdi
+    call ed_line_end
+    cmp rdx, rax
+    cmova rdx, rax
+    mov [rel ed_cur], rdx
+    clc
+    ret
+.out:
+    stc
     ret
 
 ; name: ed_key
