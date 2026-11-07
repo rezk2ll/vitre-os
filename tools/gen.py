@@ -24,6 +24,8 @@ OUT = os.path.join(ROOT, "build", "gen")
 SYM_NAME_MAX = 31
 SRC_NAME_MAX = 31
 SRC_MAGIC = b"VSRC"
+SRC_FILES_MAX = 64                  # as in forge/source.asm
+SRC_FILE = 2
 
 
 def walk(path, seen):
@@ -79,22 +81,26 @@ def main():
     if bad:
         sys.exit("\n".join(bad))
 
-    # Source area: header, directory of files, then file text back to back.
-    src_files = sorted({f[1] for f in patchable})
-    dir_size = 16 + 48 * len(src_files)
+    # Source area: header, a directory of SRC_FILES_MAX entries, then file
+    # text back to back: the kernel modules, then the user files in files/.
+    src_files = [(p, p, 0) for p in sorted({f[1] for f in patchable})]
+    for name in sorted(os.listdir(os.path.join(ROOT, "files"))):
+        src_files.append((name, os.path.join("files", name), SRC_FILE))
+    assert len(src_files) <= SRC_FILES_MAX
     blobs, base = [], {}
-    pos = dir_size
-    for path in src_files:
+    pos = 16 + 48 * SRC_FILES_MAX
+    for name, path, flags in src_files:
         with open(os.path.join(ROOT, path), "rb") as f:
             data = f.read()
         base[path] = pos
-        blobs.append((path, pos, data))
+        blobs.append((name, pos, data, flags))
         pos += len(data)
     area = bytearray(SRC_MAGIC + struct.pack("<III", len(src_files), pos, 0))
-    for path, start, data in blobs:
-        assert len(path) <= SRC_NAME_MAX, path
-        area += path.encode().ljust(32, b"\0") + struct.pack("<IIQ", start, len(data), 0)
-    for _, _, data in blobs:
+    for name, start, data, flags in blobs:
+        assert len(name) <= SRC_NAME_MAX, name
+        area += name.encode().ljust(32, b"\0") + struct.pack("<IIQ", start, len(data), flags)
+    area += bytes(48 * (SRC_FILES_MAX - len(src_files)))
+    for _, _, data, _ in blobs:
         area += data
 
     os.makedirs(OUT, exist_ok=True)

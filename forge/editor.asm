@@ -31,7 +31,13 @@ cmd_edit:
     je .no_screen
     mov rdi, rbx
     call src_find
+    jnc .found
+    mov rdi, rbx
+    call src_add
     jc .missing
+    mov rdi, rbx
+    call src_find
+.found:
     cmp rdx, ED_PAGES * PAGE_SIZE
     ja .too_big
     mov r12, rax
@@ -324,7 +330,12 @@ ed_store:
     call [rel jt_kput_dec]
     lea rdi, [rel src_msg_bytes]
     call kputs
+    mov rdi, [rel ed_path]
+    call src_find
     lea rax, [rel ed_msg_status_stored]
+    test dword [rcx + SRC_DIR_FLAGS], SRC_FILE
+    jz .status
+    lea rax, [rel ed_msg_status_file]
 .status:
     mov [rel ed_status], rax
     add rsp, 8
@@ -333,8 +344,9 @@ ed_store:
 ed_msg_prefix        db "[edit] ", 0
 ed_msg_opened        db "opened", 10, 0
 ed_msg_stored        db ": stored ", 0
-ed_msg_usage         db "usage: edit <module>", 10, 0
+ed_msg_usage         db "usage: edit <file>", 10, 0
 ed_msg_no_screen     db "no screen", 10, 0
 ed_msg_too_big       db "too big for the editor", 10, 0
 ed_msg_store_failed  db "  store failed: source area full", 0
 ed_msg_status_stored db "  stored, patch it to run it", 0
+ed_msg_status_file   db "  stored, save writes it to disk", 0

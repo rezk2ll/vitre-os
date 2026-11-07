@@ -30,7 +30,7 @@ GEN  := $(BUILD)/gen/.stamp
 
 # jump table, symbol table and source area; gen.py rewrites a file only when
 # its content changes
-$(GEN): $(SRCS) tools/gen.py | $(BUILD)
+$(GEN): $(SRCS) $(wildcard files/*) tools/gen.py | $(BUILD)
 	$(PY) tools/gen.py
 	touch $@
 

@@ -25,6 +25,8 @@ forge_check:
 .module:
     test r12d, r12d
     jz .done
+    test dword [r13 + SRC_DIR_FLAGS], SRC_FILE
+    jnz .next
     lea rdi, [rel forge_msg_prefix]
     call kputs
     mov rdi, r13
