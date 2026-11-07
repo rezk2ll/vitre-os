@@ -112,12 +112,13 @@ isr_common:
 
 ; name: isr_default
 ; in:   rdi = frame
-; out:  rax = frame; exceptions dump registers and halt, IRQs are acknowledged
+; out:  rax = frame; exceptions roll back a faulting patch or dump registers
+;       and halt, IRQs are acknowledged
 ; clobbers: caller-saved
 isr_default:
     mov rax, [rdi + INT_FRAME_VECTOR]
     cmp rax, 32
-    jb exception_fatal
+    jb .exception
     cmp rax, 48
     jae .done
     push rdi
@@ -127,6 +128,10 @@ isr_default:
     pop rdi
 .done:
     mov rax, rdi
+    ret
+.exception:
+    call patch_fault
+    jc exception_fatal
     ret
 
 ; Stubs: vectors with a CPU error code are 8, 10-14, 17, 21, 29, 30.

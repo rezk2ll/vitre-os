@@ -146,6 +146,7 @@ selftest_pit:
 %include "forge/source.asm"
 %include "forge/check.asm"
 %include "forge/patch.asm"
+%include "forge/guard.asm"
 %include "forge/operand.asm"
 %include "forge/encode.asm"
 %include "forge/modrm.asm"
