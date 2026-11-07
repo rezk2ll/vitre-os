@@ -378,6 +378,7 @@ shell_commands:
     shell_command "ping", cmd_ping, "send 4 echo requests: ping a.b.c.d|name"
     shell_command "dhcp", cmd_dhcp, "ask for a new address lease"
     shell_command "host", cmd_host, "look up a name: host example.com"
+    shell_command "tcp", cmd_tcp, "open and close a connection: tcp host port"
     shell_command "forge", forge_check, "reassemble the patchable modules"
     shell_command "edit", cmd_edit, "edit a module: edit <module>"
     shell_command "patch", cmd_patch, "patch a module live: patch <module>"
