@@ -1,8 +1,11 @@
 ; Programs: `run <file> [arguments]` assembles a user file with Forge into
 ; fresh pages and calls its first line with rdi = the arguments. The program
-; returns with ret, and it may call any kernel function by name.
+; returns with ret, and it may call any kernel function by name. A trailing
+; `&` runs it as its own task instead, its arguments copied to the end of
+; its pages.
 
 RUN_PAGES equ 16
+RUN_ARGS  equ 256                   ; argument room of a background program
 
 ; name: cmd_run
 ; in:   rdi = path, then the arguments after a space
@@ -14,8 +17,12 @@ cmd_run:
     push r13
     push r14
     push r15
+    push rbp
+    sub rsp, 8
     mov rbx, rdi
-    mov r12, rdi
+    call run_background
+    movzx ebp, al
+    mov r12, rbx
 .split:
     mov al, [r12]
     test al, al
@@ -38,9 +45,11 @@ cmd_run:
     mov rsi, r14
     mov rdx, r15
     mov rcx, r15
-    mov r8d, RUN_PAGES * PAGE_SIZE
+    mov r8d, RUN_PAGES * PAGE_SIZE - RUN_ARGS
     call forge_assemble
     jc .error
+    test ebp, ebp
+    jnz .task
     add rax, r15
     mov [rel run_code], r15
     mov [rel run_code_end], rax
@@ -48,6 +57,43 @@ cmd_run:
     call r15
     mov qword [rel run_code], 0
     mov qword [rel run_code_end], 0
+    jmp .free
+.task:
+    mov rsi, r12
+    lea rdi, [r15 + RUN_PAGES * PAGE_SIZE - RUN_ARGS]
+    mov ecx, RUN_ARGS - 1
+.copy:
+    lodsb
+    stosb
+    test al, al
+    loopnz .copy
+    mov byte [rdi], 0
+    pushfq
+    cli                             ; the task must not end before it is listed
+    lea rdi, [rel run_task]
+    mov rsi, rbx
+    mov rdx, r15
+    call task_create
+    jc .no_task
+    lea rcx, [rel run_task_pages]
+    mov [rcx + rax * 8], r15
+    popfq
+    mov r13, rax
+    lea rdi, [rel run_msg_prefix]
+    call kputs
+    mov rdi, rbx
+    call kputs
+    lea rdi, [rel run_msg_task]
+    call kputs
+    mov rdi, r13
+    call [rel jt_kput_dec]
+    mov edi, 10
+    call kputc
+    jmp .done
+.no_task:
+    popfq
+    lea rdi, [rel forge_msg_no_memory]
+    call kputs
     jmp .free
 .error:
     lea rdi, [rel run_msg_prefix]
@@ -74,6 +120,8 @@ cmd_run:
     lea rdi, [rel forge_msg_no_memory]
     call kputs
 .done:
+    add rsp, 8
+    pop rbp
     pop r15
     pop r14
     pop r13
@@ -81,11 +129,64 @@ cmd_run:
     pop rbx
     ret
 
+; name: run_background
+; in:   rdi = arguments
+; out:  al = 1 and the `&` cut off when they end with one, else al = 0
+; clobbers: rax, rcx, rdi
+run_background:
+    mov rcx, rdi
+.end:
+    cmp byte [rdi], 0
+    je .ends
+    inc rdi
+    jmp .end
+.ends:
+    cmp rdi, rcx
+    je .no
+    cmp byte [rdi - 1], '&'
+    jne .no
+    dec rdi
+.trim:
+    mov byte [rdi], 0
+    cmp rdi, rcx
+    je .yes
+    cmp byte [rdi - 1], ' '
+    jne .yes
+    dec rdi
+    jmp .trim
+.yes:
+    mov al, 1
+    ret
+.no:
+    xor eax, eax
+    ret
+
+; name: run_task
+; in:   rdi = the program's pages, its arguments at the end
+; out:  the program ran as this task; its pages freed
+; clobbers: caller-saved
+run_task:
+    push rbx
+    mov rbx, rdi
+    lea rdi, [rbx + RUN_PAGES * PAGE_SIZE - RUN_ARGS]
+    call rbx
+    cli
+    mov eax, [rel sched_current]
+    lea rcx, [rel run_task_pages]
+    mov qword [rcx + rax * 8], 0
+    sti
+    mov rdi, rbx
+    mov esi, RUN_PAGES
+    call page_free
+    pop rbx
+    ret
+
 ; name: run_fault
 ; in:   rdi = frame of a CPU exception
-; out:  rax = frame to resume, the shell's resume point, when the shell was
-;       running a program: its pages freed and the fault on the log. CF=1
-;       and rdi = the frame otherwise
+; out:  rax = frame to resume when a program faulted: the shell's resume
+;       point for a program the shell runs, the next task for a background
+;       one, which ends. Its pages freed and the fault on the log. CF=1 and
+;       rdi = the frame otherwise
 ; clobbers: caller-saved
 run_fault:
     push rbx
@@ -93,15 +194,19 @@ run_fault:
     mov rbp, rsp
     and rsp, -16                    ; any stack depth
     mov rbx, rdi
+    test qword [rbx + INT_FRAME_RFLAGS], 0x200  ; IF=0: inside an IRQ handler,
+    jz .fatal                                   ; whose EOI would be lost
+    mov eax, [rel sched_current]
+    lea rcx, [rel run_task_pages]
+    cmp qword [rcx + rax * 8], 0
+    jne .report
     cmp qword [rel run_code], 0
     je .fatal
     cmp qword [rel shell_resume_rip], 0
     je .fatal
-    test qword [rbx + INT_FRAME_RFLAGS], 0x200  ; IF=0: inside an IRQ handler,
-    jz .fatal                                   ; whose EOI would be lost
-    mov eax, [rel sched_current]
     cmp eax, [rel shell_resume_task]
     jne .fatal
+.report:
     lea rdi, [rel run_msg_fault]
     call kputs
     mov rax, [rbx + INT_FRAME_VECTOR]
@@ -114,6 +219,22 @@ run_fault:
     call kput_hex
     lea rdi, [rel run_msg_stopped]
     call kputs
+    mov eax, [rel sched_current]
+    lea rcx, [rel run_task_pages]
+    mov rdi, [rcx + rax * 8]
+    test rdi, rdi
+    jz .foreground
+    mov qword [rcx + rax * 8], 0
+    imul eax, TASK_SIZE
+    lea rcx, [rel sched_tasks]
+    mov qword [rcx + rax + TASK_STATE], TASK_DEAD
+    mov esi, RUN_PAGES
+    call page_free
+    mov rdi, rbx
+    call sched_switch
+    clc
+    jmp .return
+.foreground:
     mov rdi, rbx
     call run_stop
     clc
@@ -191,9 +312,11 @@ run_msg_fault   db 10, "[run] #", 0
 run_msg_at      db " at ", 0
 run_msg_stopped db ", program stopped", 10, 0
 run_msg_break   db "^C", 10, "[run] Ctrl+C, program stopped", 10, 0
+run_msg_task    db " is task ", 0
 
 section .bss
 alignb 8
 run_code     resq 1                 ; the running program, 0 when none
 run_code_end resq 1
+run_task_pages resq MAX_TASKS       ; a background program's pages by task id
 section .text
