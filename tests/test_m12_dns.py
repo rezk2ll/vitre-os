@@ -15,3 +15,5 @@ def test_dns_resolves_example_com():
         run(vm, "host example.com", r"\[dns\] example\.com is \d+\.\d+\.\d+\.\d+")
         run(vm, "host no-such-name.invalid", r"\[dns\] no-such-name\.invalid has no address")
         run(vm, "host a..b", r"\[dns\] a\.\.b has no address")
+        run(vm, "ping no-such-name.invalid", r"\[dns\] no-such-name\.invalid has no address")
+        run(vm, "ping", r"usage: ping")
