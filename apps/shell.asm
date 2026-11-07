@@ -139,8 +139,15 @@ shell_execute:
     mov r13, rax
     jmp .find
 .run:
+    lea rax, [rel .returned]        ; where patch_fault resumes the shell
+    mov [rel shell_resume_rip], rax
+    mov [rel shell_resume_rsp], rsp
+    mov eax, [rel sched_current]
+    mov [rel shell_resume_task], eax
     mov rdi, r12
     call [r13]
+.returned:
+    mov qword [rel shell_resume_rip], 0
     jmp .done
 .unknown:
     lea rdi, [rel shell_msg_unknown]
