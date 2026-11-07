@@ -64,6 +64,7 @@ kernel_entry:
     call kbd_init
     call mouse_init
     call net_init
+    call ac97_init
     sti
     lea rdi, [rel msg_interrupts]
     call kputs
@@ -161,6 +162,7 @@ selftest_pit:
 %include "drivers/ata.asm"
 %include "drivers/pci.asm"
 %include "drivers/e1000.asm"
+%include "drivers/ac97.asm"
 %include "net/net.asm"
 %include "net/eth.asm"
 %include "net/arp.asm"
@@ -174,6 +176,7 @@ selftest_pit:
 %include "apps/html.asm"
 %include "apps/browser.asm"
 %include "apps/play.asm"
+%include "apps/sound.asm"
 %include "apps/desktop.asm"
 %include "apps/monitor.asm"
 %include "lib/sha256.asm"
