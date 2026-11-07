@@ -392,6 +392,7 @@ shell_commands:
     shell_command "clear", shell_clear_screen, "clear the screen (also Ctrl+L)"
     shell_command "mem", cmd_mem, "free pages and heap"
     shell_command "tasks", cmd_tasks, "list tasks"
+    shell_command "top", cmd_top, "watch memory and tasks live"
     shell_command "spin", cmd_spin, "start a task that counts forever"
     shell_command "pause", cmd_pause, "pause a task: pause <id>"
     shell_command "resume", cmd_resume, "resume a paused task: resume <id>"

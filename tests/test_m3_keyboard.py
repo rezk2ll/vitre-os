@@ -22,8 +22,8 @@ def test_backspace_erases():
 def test_console_scrolls():
     with Vm("m3_scroll") as vm:
         vm.wait_for(SHELL_READY)
-        vm.sendkeys("top\n" + "\n" * 50 + "bottom", delay=0.01)
+        vm.sendkeys("first\n" + "\n" * 50 + "bottom", delay=0.01)
         vm.wait_screen(r"vitre> bottom$")
         lines = vm.screen_text()
-        if lines[-1] != "vitre> bottom" or any("top" in line for line in lines):
+        if lines[-1] != "vitre> bottom" or any("first" in line for line in lines):
             raise TestFailure(f"unexpected screen after scrolling: {lines[-3:]}")
