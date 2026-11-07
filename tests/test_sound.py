@@ -17,6 +17,24 @@ def pitch(path):
     return rate, flips / 2 / (len(sound) / rate) if sound else 0
 
 
+def dropouts(path):
+    """The seconds from the first loud sample to the last, and how many
+    runs of silence longer than a millisecond break it."""
+    data = open(path, "rb").read()
+    rate = struct.unpack_from("<I", data, 24)[0]
+    samples = data[data.index(b"data") + 8:]
+    left = struct.unpack_from(f"<{len(samples) // 4 * 2}h", samples)[::2]
+    loud = [i for i, s in enumerate(left) if abs(s) > 3000]
+    run, gaps = 0, 0
+    for s in left[loud[0]:loud[-1]]:
+        if abs(s) < 300:
+            run += 1
+        else:
+            gaps += run > rate // 1000
+            run = 0
+    return (loud[-1] - loud[0]) / rate, gaps
+
+
 def test_beep_plays_a_tone():
     wav = os.path.join(tempfile.mkdtemp(prefix="vitre-snd-"), "out.wav")
     with Vm("beep", extra=["-audiodev", f"wav,id=snd,path={wav}",

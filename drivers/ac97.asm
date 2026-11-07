@@ -122,8 +122,12 @@ ac97_queue:
     and ecx, AC97_RING - 1
     mov [rel ac97_tail], cl
     add edx, AC97_PO_CR - AC97_PO_LVI
+    in al, dx
+    test al, AC97_CR_RUN
+    jnz .queued                     ; setting it again skips to the next buffer
     mov al, AC97_CR_RUN
     out dx, al
+.queued:
     clc
     ret
 .no:
@@ -150,9 +154,11 @@ ac97_busy:
 
 ; name: ac97_stop
 ; in:   none
-; out:  playing stopped and the ring emptied
+; out:  playing stopped and the ring emptied; nothing without a card
 ; clobbers: rax, rdx
 ac97_stop:
+    cmp qword [rel ac97_ring], 0
+    je .ret
     movzx edx, word [rel ac97_nabm]
     add edx, AC97_PO_CR
     mov al, AC97_CR_RESET
@@ -165,6 +171,7 @@ ac97_stop:
     add edx, AC97_PO_BDBAR - AC97_PO_CR ; the reset forgets the ring
     mov eax, [rel ac97_ring]
     out dx, eax
+.ret:
     ret
 
 ac97_msg_ready db "[sound] ac97 ready", 10, 0

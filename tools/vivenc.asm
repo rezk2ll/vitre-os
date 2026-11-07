@@ -4,12 +4,18 @@
 ;   ffmpeg -i clip.mp4 -vf scale=320:180,fps=15 -f rawvideo -pix_fmt rgb24 - \
 ;     | build/vivenc 320 180 15 > clip.viv
 ;
-; A .viv file starts with a 16-byte header: "VIV1", then width, height and
-; frames a second as 16-bit numbers, 2 zero bytes, and the chunk size as a
-; 32-bit number. The file is cut in chunks of that size, the header inside
-; the first, so a player can fetch chunk k with one HTTP range request.
-; A chunk holds whole frames, each a 32-bit length and its codes; a length
-; of 0, or the chunk's end, ends the chunk.
+; With sound open on file 3, as unsigned 8-bit mono samples at 16 kHz
+; (ffmpeg -i clip.mp4 -f u8 -ac 1 -ar 16000 clip.u8), each frame carries
+; the samples played while it shows: `build/vivenc 320 180 15 3< clip.u8`.
+;
+; A .viv file starts with a 16-byte header: "VIV1", then width, height,
+; frames a second and the sound's samples a second (0 for none) as 16-bit
+; numbers, and the chunk size as a 32-bit number. The file is cut in chunks
+; of that size, the header inside the first, so a player can fetch chunk k
+; with one HTTP range request. A chunk holds whole frames, each a 32-bit
+; length of its codes, then with sound a 16-bit count of samples and the
+; samples, then the codes; a length of 0, or the chunk's end, ends the
+; chunk.
 ;
 ; A frame is codes over its pixels, left to right and top to bottom, each
 ; pixel one byte of red 3 bits, green 3 bits, blue 2 bits. A code byte's
@@ -29,6 +35,9 @@ HEADER     equ 16
 MAX_PIXELS equ 640 * 480
 MAX_CHUNK  equ 200000               ; the player fetches a chunk in one read
 CHUNK      equ 131072
+RATE       equ 16000                ; sound samples a second
+FPS_SOUND  equ 4                    ; fewer frames a second than this would
+SOUND_MAX  equ RATE / FPS_SOUND     ; carry too many samples each
 OP_SKIP    equ 0x00
 OP_RUN     equ 0x40
 OP_COPY    equ 0x80
@@ -80,9 +89,24 @@ _start:
     mov eax, [chunk]
     mov [rdi + 12], eax
     mov dword [fill], HEADER
+    xor edx, edx                    ; reading 0 bytes says if file 3 is open
+    lea rsi, [samples]
+    mov edi, 3
+    mov eax, SYS_READ
+    syscall
+    test rax, rax
+    jnz .frame
+    cmp dword [fps], FPS_SOUND
+    jb .usage
+    mov byte [sound], 1
+    mov word [outbuf + 10], RATE
 .frame:
     call read_frame
     jc .end
+    cmp byte [sound], 0
+    je .picture
+    call read_sound
+.picture:
     call dither
     call encode
     call pack
@@ -151,6 +175,47 @@ read_frame:
     ret
 .short:
     stc                             ; a part frame at the end is dropped
+    ret
+
+; name: read_sound
+; in:   frames = frames read before this one
+; out:  samples holds this frame's sound, sample_len how many: up to
+;       frames * RATE / fps in all; silence past the end of file 3
+; clobbers: rax, rcx, rdx, rsi, rdi, r11
+read_sound:
+    inc dword [frames]
+    mov eax, [frames]
+    imul rax, rax, RATE
+    xor edx, edx
+    mov ecx, [fps]
+    div rcx
+    sub eax, [sent]
+    add [sent], eax
+    mov [sample_len], eax
+    xor ecx, ecx                    ; bytes read so far
+.read:
+    cmp ecx, [sample_len]
+    jae .ret
+    push rcx
+    lea rsi, [samples + rcx]
+    mov edx, [sample_len]
+    sub edx, ecx
+    mov edi, 3
+    mov eax, SYS_READ
+    syscall
+    pop rcx
+    test rax, rax
+    jle .silence
+    add ecx, eax
+    jmp .read
+.silence:
+    lea rdi, [samples + rcx]
+    mov edx, [sample_len]
+    sub edx, ecx
+    mov ecx, edx
+    mov al, 128
+    rep stosb
+.ret:
     ret
 
 ; name: dither
@@ -318,13 +383,18 @@ run_length:
     ret
 
 ; name: pack
-; in:   codes, code_len = a frame
+; in:   codes, code_len = a frame; samples, sample_len its sound
 ; out:  the frame added to the chunk in out; a full chunk is padded with
 ;       zeros, written, and the frame starts the next one
 ; clobbers: caller-saved
 pack:
     mov eax, [code_len]
     add eax, 4
+    cmp byte [sound], 0
+    je .sized
+    add eax, [sample_len]
+    add eax, 2
+.sized:
     mov ecx, [chunk]
     sub ecx, [fill]
     cmp eax, ecx
@@ -346,6 +416,15 @@ pack:
     add rdi, rax
     mov eax, [code_len]
     stosd
+    cmp byte [sound], 0
+    je .codes
+    mov eax, [sample_len]
+    stosw
+    lea rsi, [samples]
+    mov ecx, eax
+    rep movsb
+.codes:
+    mov eax, [code_len]
     lea rsi, [codes]
     mov ecx, eax
     rep movsb
@@ -399,7 +478,7 @@ fail:
 
 section .data
 bayer       db 0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5
-msg_usage   db "usage: vivenc width height fps [chunk] < rgb24 frames > video.viv", 10
+msg_usage   db "usage: vivenc width height fps [chunk] < rgb24 frames [3< u8 16 kHz sound] > video.viv", 10
 msg_usage_len equ $ - msg_usage
 msg_big     db "vivenc: a frame does not fit in a chunk; use a bigger chunk", 10
 msg_big_len equ $ - msg_big
@@ -415,7 +494,12 @@ pixels   resd 1
 want     resd 1
 fill     resd 1
 code_len resd 1
+frames   resd 1
+sent     resd 1                     ; sound samples written so far
+sample_len resd 1
+sound    resb 1
 rgb      resb MAX_PIXELS * 3
+samples  resb SOUND_MAX
 cur      resb MAX_PIXELS
 prev     resb MAX_PIXELS
 codes    resb MAX_PIXELS + MAX_PIXELS / 64 + 64
