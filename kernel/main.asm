@@ -172,6 +172,7 @@ selftest_pit:
 %include "glass/disext.asm"
 %include "glass/discmd.asm"
 %include "glass/panes.asm"
+%include "glass/codepane.asm"
 
 msg_long_mode  db "[boot] long mode ok", 10, 0
 msg_image_ok   db "[kernel] image ok", 10, 0
