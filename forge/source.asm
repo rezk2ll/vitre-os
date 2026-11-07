@@ -1,12 +1,13 @@
 ; Source area in memory: a header ("VSRC", file count, total length), a
-; directory of 48-byte entries (path, then offset and length from the start
-; of the area), then the file texts back to back.
+; directory of 48-byte entries (path, offset and length from the start of
+; the area, flags), then the file texts back to back.
 
 SRC_HDR_COUNT equ 4
 SRC_DIR       equ 16
 SRC_DIR_ENTRY equ 48
 SRC_DIR_START equ 32
 SRC_DIR_LEN   equ 36
+SRC_DIR_FLAGS equ 40                ; 1 once edited: boot patches it from here
 
 ; name: src_find
 ; in:   rdi = module path, e.g. "kernel/report.asm"
@@ -99,6 +100,7 @@ src_replace:
     jne .copy
     mov rsi, r12
     mov rcx, r13
+    mov dword [r8 + SRC_DIR_FLAGS], 1
 .copy:
     mov [r8 + SRC_DIR_START], ebp
     mov [r8 + SRC_DIR_LEN], ecx

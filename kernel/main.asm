@@ -57,6 +57,7 @@ kernel_entry:
     call pit_init
     call sched_init
     call src_load
+    call patch_boot
     call kbd_init
     sti
     lea rdi, [rel msg_interrupts]
@@ -151,6 +152,7 @@ selftest_pit:
 %include "forge/screen.asm"
 %include "forge/editor.asm"
 %include "forge/find.asm"
+%include "forge/save.asm"
 %include "forge/operand.asm"
 %include "forge/encode.asm"
 %include "forge/modrm.asm"

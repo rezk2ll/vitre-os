@@ -46,6 +46,27 @@ def test_edit_and_patch_changes_behavior():
             raise TestFailure(f"mem after rollback: {out!r}")
 
 
+def test_saved_patch_survives_reboot():
+    disk = fresh_disk()
+    try:
+        with Vm("m9_save", disk=disk) as vm:
+            pos = vm.wait_for(SHELL_READY).end()
+            pos = edit_digits_to_letters(vm, pos)
+            out, pos = run(vm, "save", pos)
+            if not re.search(r"\[save\] source area written, \d+ bytes", out):
+                raise TestFailure(f"save: {out!r}")
+            vm.sendkeys("reboot\n")
+            vm.wait_exit()
+        with Vm("m9_saved", disk=disk) as vm:
+            pos = vm.wait_for(r"\[patch\] kernel/report.asm: 4 functions").end()
+            pos = vm.wait_for(SHELL_READY, start=pos).end()
+            out, pos = run(vm, "mem", pos)
+            if not re.search(r"pages free [A-J]+ of [A-J]+", out):
+                raise TestFailure(f"saved patch not live after reboot: {out!r}")
+    finally:
+        os.remove(disk)
+
+
 def test_patch_and_rollback():
     with Vm("m9_patch") as vm:
         pos = vm.wait_for(SHELL_READY).end()
