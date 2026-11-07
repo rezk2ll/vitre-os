@@ -96,3 +96,11 @@ def test_vivenc_round_trip():
     bad = subprocess.run([VIVENC, "0", "1", "1"], capture_output=True)
     if bad.returncode != 1 or b"usage" not in bad.stderr:
         raise TestFailure(f"bad size: {bad.returncode} {bad.stderr!r}")
+
+
+def test_sample_video_decodes():
+    header, frames, sounds = decode(open("samples/demo.viv", "rb").read())
+    if header[:4] != (320, 180, 15, 16000) or len(frames) != 225:
+        raise TestFailure(f"samples/demo.viv: header {header}, {len(frames)} frames")
+    if sum(map(len, sounds)) != 15 * 16000:
+        raise TestFailure(f"samples/demo.viv: {sum(map(len, sounds))} samples")
