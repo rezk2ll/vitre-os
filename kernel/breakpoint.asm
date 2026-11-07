@@ -132,17 +132,23 @@ cmd_break:
     call parse_addr
     jc .usage
     mov rbx, rax
+    pushfq                          ; a task can hit the breakpoint at once:
+    cli                             ; its report waits for this line
     mov rdi, rax
     call bp_set
-    jc .refused
+    jc .refused_on
     lea rdi, [rel bp_msg_set]
     call kputs
     mov rdi, rbx
     call kput_hex
     mov edi, 10
     call kputc
+    popfq
     pop rbx
     ret
+.refused_on:
+    popfq
+    jmp .refused
 .usage:
     lea rdi, [rel bp_msg_usage]
     call kputs
