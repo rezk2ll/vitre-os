@@ -58,7 +58,10 @@ kbd_irq:
 .eoi:
     mov edi, 1
     call pic_eoi
-    pop rax
+    pop rdi
+    sub rsp, 8
+    call run_poll
+    add rsp, 8
     ret
 
 ; name: kbd_scancode

@@ -75,3 +75,18 @@ def test_a_crashing_program_stops_and_the_shell_lives():
         out, pos = run(vm, "run hello.asm", pos)
         if not out.startswith("Hello, world!"):
             raise TestFailure(f"shell after the crashes: {out!r}")
+
+
+def test_ctrl_c_stops_a_program_that_never_returns():
+    with Vm("run_break") as vm:
+        pos = vm.wait_for(SHELL_READY).end()
+        for name, text in (("spin.asm", "start:\n    jmp start\n"),
+                           ("yield.asm", "start:\n    call task_yield\n    jmp start\n")):
+            pos = write_file(vm, name, text, pos)
+            vm.sendkeys(f"run {name}\n")
+            pos = vm.wait_for(re.escape(f"run {name}") + r"\r\n", start=pos).end()
+            vm.ctrl("c")
+            pos = vm.wait_for(r"\[run\] Ctrl\+C, program stopped\r\nvitre> ", start=pos).end()
+        out, pos = run(vm, "run hello.asm", pos)
+        if not out.startswith("Hello, world!"):
+            raise TestFailure(f"shell after Ctrl+C: {out!r}")

@@ -31,6 +31,10 @@ pit_irq:
     xor edi, edi
     call pic_eoi
     pop rdi
+    sub rsp, 8
+    call run_poll                   ; Ctrl+C in a program that loops
+    add rsp, 8
+    mov rdi, rax
     jmp sched_tick
 
 ; name: timer_sleep_ms

@@ -114,17 +114,8 @@ run_fault:
     call kput_hex
     lea rdi, [rel run_msg_stopped]
     call kputs
-    mov rdi, [rel run_code]
-    mov esi, RUN_PAGES
-    call page_free
-    xor eax, eax
-    mov [rel run_code], rax
-    mov [rel run_code_end], rax
-    mov rax, [rel shell_resume_rip]
-    mov [rbx + INT_FRAME_RIP], rax
-    mov rax, [rel shell_resume_rsp]
-    mov [rbx + INT_FRAME_RSP], rax
-    mov rax, rbx
+    mov rdi, rbx
+    call run_stop
     clc
     jmp .return
 .fatal:
@@ -136,10 +127,70 @@ run_fault:
     pop rbx
     ret
 
+; name: run_poll
+; in:   rdi = frame of an IRQ
+; out:  rax = frame to resume. When Ctrl+C is the newest key and the IRQ
+;       interrupted the running program's own code, the key is taken and
+;       the program stopped; otherwise the frame is rdi, untouched
+; clobbers: caller-saved
+run_poll:
+    mov rax, rdi
+    mov rcx, [rel run_code]
+    test rcx, rcx
+    jz .done
+    mov rdx, [rdi + INT_FRAME_RIP]
+    cmp rdx, rcx
+    jb .done
+    cmp rdx, [rel run_code_end]
+    jae .done
+    cmp qword [rel shell_resume_rip], 0
+    je .done
+    mov edx, [rel sched_current]
+    cmp edx, [rel shell_resume_task]
+    jne .done
+    mov ecx, [rel kbd_head]
+    cmp ecx, [rel kbd_tail]
+    je .done
+    dec ecx
+    and ecx, KBD_BUF_SIZE - 1
+    lea rdx, [rel kbd_buf]
+    cmp byte [rdx + rcx], 3         ; Ctrl+C
+    jne .done
+    mov [rel kbd_head], ecx
+    push rdi
+    lea rdi, [rel run_msg_break]
+    call kputs
+    pop rdi
+    jmp run_stop
+.done:
+    ret
+
+; name: run_stop
+; in:   rdi = frame the running program was stopped in
+; out:  rax = that frame, set to resume the shell after `run`; the
+;       program's pages freed
+; clobbers: caller-saved
+run_stop:
+    push rdi
+    mov rdi, [rel run_code]
+    mov esi, RUN_PAGES
+    call page_free
+    pop rdx
+    xor eax, eax
+    mov [rel run_code], rax
+    mov [rel run_code_end], rax
+    mov rax, [rel shell_resume_rip]
+    mov [rdx + INT_FRAME_RIP], rax
+    mov rax, [rel shell_resume_rsp]
+    mov [rdx + INT_FRAME_RSP], rax
+    mov rax, rdx
+    ret
+
 run_msg_prefix  db "[run] ", 0
 run_msg_fault   db 10, "[run] #", 0
 run_msg_at      db " at ", 0
 run_msg_stopped db ", program stopped", 10, 0
+run_msg_break   db "^C", 10, "[run] Ctrl+C, program stopped", 10, 0
 
 section .bss
 alignb 8
