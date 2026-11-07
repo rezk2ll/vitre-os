@@ -48,9 +48,13 @@ kbd_init:
 ; clobbers: caller-saved
 kbd_irq:
     push rdi
+    in al, 0x64
+    test al, 0x20                   ; the mouse's byte: IRQ 12 takes it
+    jnz .eoi
     in al, 0x60
     movzx edi, al
     call kbd_scancode
+.eoi:
     mov edi, 1
     call pic_eoi
     pop rax
