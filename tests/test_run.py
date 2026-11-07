@@ -69,8 +69,14 @@ def test_cube_turns():
         time.sleep(0.5)
         if vm.screendump()[2] == first:
             raise TestFailure("the cube does not move")
-        if bytes((0xbf, 0x61, 0x6a)) not in first:
-            raise TestFailure("no red edge on screen")
+        shades = set()
+        for _ in range(4):                  # a face can be all that shows
+            rgb = vm.screendump()[2]
+            shades |= {rgb[i:i + 3] for i in range(0, len(rgb), 3)}
+            time.sleep(0.3)
+        shades.discard(bytes((0x2e, 0x34, 0x40)))
+        if len(shades) < 3:
+            raise TestFailure(f"faces drawn in {len(shades)} colours, not 3 or more")
         vm.sendkeys("q")
         vm.wait_for(r"\r\nvitre> ", start=pos)
 
