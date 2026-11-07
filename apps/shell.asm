@@ -664,6 +664,7 @@ shell_commands:
     shell_command "ls", cmd_ls, "list the files on disk"
     shell_command "cat", cmd_cat, "print a file: cat <file>"
     shell_command "rm", cmd_rm, "delete a user file: rm <file>"
+    shell_command "run", cmd_run, "assemble and run a program: run <file.asm> [arguments]"
     shell_command "edit", cmd_edit, "edit a file or module, new or not: edit <file>"
     shell_command "patch", cmd_patch, "patch a module live: patch <module>"
     shell_command "rollback", cmd_rollback, "undo the last patch"
