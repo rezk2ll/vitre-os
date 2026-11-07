@@ -166,6 +166,7 @@ selftest_pit:
 %include "apps/shell.asm"
 %include "apps/taskcmd.asm"
 %include "glass/disfmt.asm"
+%include "glass/dis.asm"
 
 msg_long_mode  db "[boot] long mode ok", 10, 0
 msg_image_ok   db "[kernel] image ok", 10, 0
