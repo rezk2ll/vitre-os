@@ -13,7 +13,7 @@ def nasm_map():
 def test_symbol_dump_matches_map():
     with Vm("m6_syms", cmdline="test=syms") as vm:
         vm.wait_for(r"\[src\] source area loaded, \d+ bytes")
-        vm.wait_for(r"\[src\] sched_list: ")
+        vm.wait_for(r"\[src\] sched_list: .*\r\n")
         serial = vm.serial()
     syms = re.findall(r"\[sym\] (\w+) ([0-9a-f]{16}) (\d+) (-?\d+) (-?\d+)", serial)
     if len(syms) < 50:
