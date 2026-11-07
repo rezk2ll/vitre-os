@@ -224,6 +224,51 @@ e1000_isr:
     pop rbx
     ret
 
+; name: e1000_send
+; in:   rdi = frame, esi = length (at most ETH_FRAME_MAX)
+; out:  the frame queued for transmission; CF=1 if no descriptor came free
+; clobbers: caller-saved
+e1000_send:
+    push rbx
+    pushfq                          ; the IRQ path sends too (ARP replies)
+    cli
+    mov rbx, [rel e1000_mmio]
+    mov ecx, [rel e1000_tx_next]
+    mov rdx, rcx
+    shl rdx, 4
+    add rdx, [rel e1000_tx_ring]
+    mov r8d, 1000000
+.wait:
+    test byte [rdx + E1000_D_STATUS], E1000_DD
+    jnz .free
+    pause
+    dec r8d
+    jnz .wait
+    popfq
+    pop rbx
+    stc
+    ret
+.free:
+    mov r8, rdi
+    mov rdi, [rdx + E1000_D_ADDR]
+    mov r9d, ecx
+    mov ecx, esi
+    mov r10, rsi
+    mov rsi, r8
+    rep movsb
+    mov [rdx + E1000_D_LEN], r10w
+    mov byte [rdx + E1000_D_CMD], E1000_CMD_EOP | E1000_CMD_IFCS | E1000_CMD_RS
+    mov byte [rdx + E1000_D_STATUS], 0
+    inc r9d
+    and r9d, E1000_TX_COUNT - 1
+    mov [rel e1000_tx_next], r9d
+    mov [rbx + E1000_TDT], r9d
+    inc qword [rel net_tx_frames]
+    popfq
+    pop rbx
+    clc
+    ret
+
 ; name: e1000_link_up
 ; in:   none
 ; out:  ZF=0 if the link is up

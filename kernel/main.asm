@@ -147,6 +147,7 @@ selftest_pit:
 %include "drivers/pci.asm"
 %include "drivers/e1000.asm"
 %include "net/net.asm"
+%include "net/eth.asm"
 %include "kernel/report.asm"
 %include "kernel/symbols.asm"
 %include "forge/lex.asm"
