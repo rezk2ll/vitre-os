@@ -93,3 +93,11 @@ A patchable module is a whole file written in the Vitre dialect (docs/DIALECT.md
 - The disassembler covers what the kernel itself uses: the one-byte map, the groups, and the parts of the 0x0f map that NASM emits for this code. Anything else prints as `db`. The test compares mnemonics and lengths with ndisasm over the kernel's own functions, which is what Glass shows.
 - The code pane decodes from the start of the enclosing function, so the lines before RIP are real instruction boundaries rather than guesses from decoding backwards.
 - Glass redraws every 100 ms from the task's saved frame and yields between frames, so the watched task keeps running at full speed.
+
+## D21. Network stack shape
+
+- One card, one address. The e1000 is found by PCI ID and QEMU's user network fixes the addresses, so there is no interface table or routing table: hosts on the local /24 are reached directly and everything else goes through the gateway.
+- Receive runs in the IRQ handler, straight up the layers. ARP replies and ICMP echo replies are sent from there too, so every send path runs under `cli`, and the shared packet buffers are only touched with interrupts off.
+- Sending to a host with no ARP entry resolves it first, but only outside an IRQ (interrupts on). From the IRQ path the packet is dropped instead, because waiting there would stop the clock.
+- Addresses and ports stay in network byte order everywhere, as they sit in the packet. Only printing and parsing convert.
+- Fragmented IPv4 packets are dropped. Nothing the later milestones fetch needs reassembly.
