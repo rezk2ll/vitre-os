@@ -90,3 +90,24 @@ def test_ctrl_c_stops_a_program_that_never_returns():
         out, pos = run(vm, "run hello.asm", pos)
         if not out.startswith("Hello, world!"):
             raise TestFailure(f"shell after Ctrl+C: {out!r}")
+
+
+def test_a_program_runs_as_its_own_task():
+    with Vm("run_task") as vm:
+        pos = vm.wait_for(SHELL_READY).end()
+        pos = write_file(vm, "loop.asm", "start:\n    call task_yield\n    jmp start\n", pos)
+        out, pos = run(vm, "run loop.asm &", pos)
+        m = re.fullmatch(r"\[run\] loop\.asm is task (\d+)", out)
+        if not m:
+            raise TestFailure(f"run &: {out!r}")
+        out, pos = run(vm, "tasks", pos)
+        if not re.search(rf"\[task\] {m.group(1)} loop\.asm ready", out):
+            raise TestFailure(f"tasks: {out!r}")
+        vm.sendkeys("run hello.asm Bg&\n")
+        pos = vm.wait_for(r"Hello, Bg! .*\r\n", start=pos).end()
+        pos = write_file(vm, "die.asm", "    xor ecx, ecx\n    div rcx\n    ret\n", pos)
+        vm.sendkeys("run die.asm &\n")
+        pos = vm.wait_for(r"\[run\] #DE at [0-9a-f]{16}, program stopped", start=pos).end()
+        out, pos = run(vm, "run hello.asm", pos)
+        if not out.startswith("Hello, world!"):
+            raise TestFailure(f"shell after a task faulted: {out!r}")
