@@ -130,6 +130,14 @@ cr_aead_args:
     mov r9d, [rel cr_lens + 12]
     ret
 
+cr_x25519:                          ; scalar, u
+    lea rdi, [rel cr_out]
+    lea rsi, [rel cr_arg]
+    lea rdx, [rel cr_arg + CR_MAX]
+    call x25519
+    mov esi, 32
+    jmp cr_print_out
+
 cr_chacha20:                        ; key, nonce, one-byte counter, data
     lea rdi, [rel cr_arg]
     movzx esi, byte [rel cr_arg + 2 * CR_MAX]
@@ -276,6 +284,7 @@ cr_table:
     dq cr_n_poly1305, cr_poly1305, 2
     dq cr_n_seal, cr_seal, 4
     dq cr_n_open, cr_open, 4
+    dq cr_n_x25519, cr_x25519, 2
     dq 0
 
 cr_n_sha256   db "sha256", 0
@@ -285,10 +294,11 @@ cr_n_chacha20 db "chacha20", 0
 cr_n_poly1305 db "poly1305", 0
 cr_n_seal     db "seal", 0
 cr_n_open     db "open", 0
+cr_n_x25519   db "x25519", 0
 cr_msg_bad    db "crypto: bad tag", 10, 0
 cr_msg_usage db "usage: crypto sha256 <data> | hmac <key> <data> | hkdf <salt> <key> <info> <len>", 10
              db "       | chacha20 <key> <nonce> <counter> <data> | poly1305 <key> <data>", 10
-             db "       | seal|open <key> <nonce> <additional data> <data>", 10
+             db "       | seal|open <key> <nonce> <additional data> <data> | x25519 <scalar> <u>", 10
              db "       inputs in hex, - for an empty one", 10, 0
 
 section .bss
