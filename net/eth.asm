@@ -22,6 +22,8 @@ eth_input:
     sub esi, ETH_HDR
     cmp eax, ETH_TYPE_ARP
     je arp_input
+    cmp eax, ETH_TYPE_IPV4
+    je ip_input
 .drop:
     ret
 

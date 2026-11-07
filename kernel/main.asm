@@ -149,6 +149,8 @@ selftest_pit:
 %include "net/net.asm"
 %include "net/eth.asm"
 %include "net/arp.asm"
+%include "net/ipv4.asm"
+%include "net/icmp.asm"
 %include "kernel/report.asm"
 %include "kernel/symbols.asm"
 %include "forge/lex.asm"

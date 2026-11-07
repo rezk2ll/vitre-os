@@ -375,6 +375,7 @@ shell_commands:
     shell_command "lspci", cmd_lspci, "list PCI devices"
     shell_command "net", cmd_net, "network card, link and frame counters"
     shell_command "arp", cmd_arp, "resolve an address: arp [a.b.c.d], or list the cache"
+    shell_command "ping", cmd_ping, "send 4 echo requests: ping a.b.c.d"
     shell_command "forge", forge_check, "reassemble the patchable modules"
     shell_command "edit", cmd_edit, "edit a module: edit <module>"
     shell_command "patch", cmd_patch, "patch a module live: patch <module>"
