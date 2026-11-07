@@ -710,6 +710,7 @@ shell_commands:
     shell_command "view", cmd_view, "fetch a page and print it as text: view http://host/path"
     shell_command "browse", cmd_browse, "open the browser: browse [http://host/path]"
     shell_command "play", cmd_play, "stream a video: play http://host/clip.viv"
+    shell_command "beep", cmd_beep, "play a tone: beep [hz]"
     shell_command "tls", cmd_tls, "try a TLS 1.3 handshake: tls <host> <port>"
     shell_command "trust", cmd_trust, "trust a CA's P-256 key: trust <x y in hex>"
     shell_command "crypto", cmd_crypto, "run a primitive on hex input: crypto sha256|hmac|hkdf|chacha20|poly1305|seal|open|x25519|label|pmul|ninv|ecmul|ecdsa|x509|x509host <hex>..."

@@ -13,6 +13,7 @@ PCI_HEADER   equ 0x0c               ; bit 23: multi-function device
 PCI_BAR0     equ 0x10
 PCI_IRQ_LINE equ 0x3c
 
+PCI_CMD_IO     equ 1
 PCI_CMD_MEMORY equ 2
 PCI_CMD_MASTER equ 4
 

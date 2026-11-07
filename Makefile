@@ -7,7 +7,7 @@ IMG   := $(BUILD)/vitre.img
 
 QEMU_FLAGS := -machine pc -m 128M -drive file=$(IMG),format=raw,if=ide,index=0 \
               -serial stdio -no-reboot -device isa-debug-exit,iobase=0xf4,iosize=0x04 \
-              -nic user,model=e1000
+              -nic user,model=e1000 -device AC97
 
 .PHONY: all run debug test clean
 
