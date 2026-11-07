@@ -2,7 +2,7 @@
 
 ## Current milestone
 
-M8 done. Next: M9, the Forge editor and live patching.
+M9 done. Next: M10, Glass UI panes and the debugger.
 
 ## Milestones
 
@@ -16,6 +16,7 @@ M8 done. Next: M9, the Forge editor and live patching.
 - M6: done. `tools/gen.py` builds the jump table, symbol table and source area from function headers. Patchable functions are only called through `jt_*` slots. The source area sits on disk at LBA 2048 and is read at boot with ATA PIO. `test=syms` dumps both and the test checks them against the NASM map.
 - M7: done. The kernel ends in a shell with `help`, `clear`, `mem`, `tasks`, `syms`, `uptime`, `layout` and `reboot`. Backspace edits the line, Ctrl+C drops it, Ctrl+L clears the screen.
 - M8: done. Forge, the in-kernel assembler for the Vitre dialect, runs multi-pass with growing jumps and resolves names against the module and then the kernel label table. The `forge` command assembles every module in the source area at its linked address and compares the bytes with the running kernel: `kernel/report.asm` matches NASM byte for byte.
+- M9: done. `edit <module>` opens a full-screen editor on a module of the source area (Ctrl+S store, Ctrl+F find, Ctrl+Q quit). `patch <module>` assembles it into fresh pages and swaps its jump table slots under `cli`; `rollback` restores them. A CPU exception in new code within 10 s of a patch rolls it back and returns to the prompt. `save` writes the source area to disk, and boot re-patches every edited module.
 
 ## Stubs
 
@@ -25,5 +26,5 @@ M8 done. Next: M9, the Forge editor and live patching.
 
 - stage1: 512 bytes
 - stage2: 16 KiB slot (code is under 1 KiB)
-- kernel: 45776 bytes (4 KiB interrupt stubs and table, 3.5 KiB font, symbol and label tables, Forge)
+- kernel: 53784 bytes (4 KiB interrupt stubs and table, 3.5 KiB font, symbol and label tables, Forge, editor)
 - source area: 3047 bytes

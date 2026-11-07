@@ -76,3 +76,11 @@ The source area holds the full text of every file that contains a patchable func
 ## D18. Patchable modules and the Forge test
 
 A patchable module is a whole file written in the Vitre dialect (docs/DIALECT.md), so Forge only ever assembles code it fully understands. The log printers moved into `kernel/report.asm` for this. Names a module uses but does not define are resolved through a label table that `tools/gen.py` emits next to the symbol table: every top-level label and `equ` in the image with its value. Because the module is linked into the kernel by NASM, "Forge matches NASM" is checked inside the OS: Forge assembles the module's source from the source area at the address of its first label, and the result must equal the kernel's own bytes at that address.
+
+## D19. Live patching, rollback and persistence
+
+- A patch assembles the whole module into 4 fresh pages, then swaps every jump table slot it defines under `cli`, so no caller ever sees half a module. Old code is never freed, because a task may still be running it.
+- Rollback is one level deep: it restores the slots saved by the last patch. That covers "undo what I just broke" without keeping a history.
+- For 10 s after a patch, a CPU exception whose RIP is in the new code rolls the patch back and resumes the shell at its prompt. Recovery only runs when interrupts were on (not inside an IRQ handler, which would lose its EOI) and the faulting task is the shell. Anything else stays fatal.
+- `edit` stores into the source area in memory and marks the module edited. `save` writes the whole source area back to its disk sectors. At boot, every module marked edited is patched from its saved source, so edits survive a reboot without rebuilding the image.
+- Known limit: symbol records keep the source offsets from the build, so after an edit they can point at the wrong place in the module text.
