@@ -86,3 +86,54 @@ flowchart LR
   yield[int 0x40] --> sw
   sw -->|save frame, pick next ready, free dead stacks| next[resume next task frame]
 ```
+
+## Live patching
+
+- `tools/gen.py` reads every function header at build time. Functions marked `; patchable: yes` get a slot in the jump table, and every caller goes through `call [rel jt_name]`.
+- The source of each file holding a patchable function goes into the source area, stored on disk from LBA 2048 and loaded at boot. `edit` changes it in memory and `save` writes it back.
+- `patch` runs Forge on the module, writes the code into fresh pages and swaps the module's jump table slots under `cli`. Old code is never freed, since a task may still be running it.
+- `forge/guard.asm`: a CPU exception inside the new code within 10 s of the patch puts the old slots back and resumes the shell.
+
+```mermaid
+flowchart LR
+  src[source area] --> edit[edit]
+  edit --> forge[Forge: assemble at a fresh address]
+  forge --> swap[swap jump table slots]
+  swap --> run[callers run the new code]
+  run -->|exception within 10 s| back[rollback]
+  edit --> save[save to disk]
+```
+
+## Glass
+
+- `kernel/debug.asm` pauses a task by having the scheduler skip it, its frame kept as saved. `step` sets the trap flag in that frame, and the `#DB` after one instruction pauses it again.
+- `kernel/breakpoint.asm` writes `int3` over an instruction and pauses the task that hits it.
+- `glass/view.asm` redraws a task's frame, the disassembly around RIP, its stack and memory while it runs, highlighting registers that changed.
+
+## Network
+
+Frames arrive on the e1000 IRQ and go up the stack inside the handler. There is one TCP connection at a time, read in order into a 256 KiB buffer.
+
+```mermaid
+flowchart BT
+  e1000[e1000 IRQ] --> eth[eth_input]
+  eth --> arp[arp_input]
+  eth --> ip[ipv4_input]
+  ip --> icmp[icmp_input]
+  ip --> udp[udp_input]
+  ip --> tcp[tcp_input]
+  udp --> dhcp[dhcp_input]
+  udp --> dns[dns_input]
+  tcp --> http[http_get]
+  tcp --> tls[TLS 1.3]
+  tls --> http
+  http --> browser[browse, view, get]
+```
+
+## TLS
+
+`net/tls.asm` offers one suite, TLS_CHACHA20_POLY1305_SHA256 with X25519. The primitives live in `lib`, one file each, and `crypto <primitive>` runs any of them on hex input.
+
+- The handshake keys come from the X25519 secret through HKDF. Then the client checks the server's Finished and sends its own.
+- The leaf certificate is parsed with `net/x509.asm`. When its key is P-256, the CertificateVerify signature is checked with `lib/p256.asm` and a bad one fails the handshake.
+- The certificate chain is not verified yet.

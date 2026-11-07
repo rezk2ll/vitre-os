@@ -2,7 +2,7 @@
 
 ## Current milestone
 
-M16 done. Next: M17, certificate chain validation.
+M17 in progress, certificate validation. P-256 ECDSA, X.509 parsing and the CertificateVerify check are in. Next: the server name against the certificate, then the chain up to a trust anchor.
 
 ## Milestones
 
