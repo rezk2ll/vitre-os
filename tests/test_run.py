@@ -103,6 +103,15 @@ def test_a_program_runs_as_its_own_task():
         out, pos = run(vm, "tasks", pos)
         if not re.search(rf"\[task\] {m.group(1)} loop\.asm ready", out):
             raise TestFailure(f"tasks: {out!r}")
+        out, pos = run(vm, "kill 0", pos)
+        if not out.startswith("usage: kill"):
+            raise TestFailure(f"kill 0: {out!r}")
+        out, pos = run(vm, f"kill {m.group(1)}", pos)
+        if out != "[run] program killed":
+            raise TestFailure(f"kill: {out!r}")
+        out, pos = run(vm, "tasks", pos)
+        if "loop.asm" in out:
+            raise TestFailure(f"tasks after kill: {out!r}")
         vm.sendkeys("run hello.asm Bg&\n")
         pos = vm.wait_for(r"Hello, Bg! .*\r\n", start=pos).end()
         pos = write_file(vm, "die.asm", "    xor ecx, ecx\n    div rcx\n    ret\n", pos)

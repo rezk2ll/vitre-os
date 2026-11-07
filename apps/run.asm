@@ -181,6 +181,41 @@ run_task:
     pop rbx
     ret
 
+; name: cmd_kill
+; in:   rdi = task id of a background program
+; out:  that task ended and its pages freed, or why not on the log
+; clobbers: caller-saved
+cmd_kill:
+    sub rsp, 8
+    call parse_dec
+    jc .bad
+    cmp rax, MAX_TASKS
+    jae .bad
+    pushfq
+    cli
+    lea rcx, [rel run_task_pages]
+    mov rdi, [rcx + rax * 8]
+    test rdi, rdi
+    jz .not_program
+    mov qword [rcx + rax * 8], 0
+    imul edx, eax, TASK_SIZE
+    lea rcx, [rel sched_tasks]
+    mov qword [rcx + rdx + TASK_STATE], TASK_DEAD
+    popfq
+    mov esi, RUN_PAGES
+    call page_free
+    lea rdi, [rel run_msg_killed]
+    call kputs
+    jmp .done
+.not_program:
+    popfq
+.bad:
+    lea rdi, [rel run_msg_kill_usage]
+    call kputs
+.done:
+    add rsp, 8
+    ret
+
 ; name: run_fault
 ; in:   rdi = frame of a CPU exception
 ; out:  rax = frame to resume when a program faulted: the shell's resume
@@ -313,6 +348,8 @@ run_msg_at      db " at ", 0
 run_msg_stopped db ", program stopped", 10, 0
 run_msg_break   db "^C", 10, "[run] Ctrl+C, program stopped", 10, 0
 run_msg_task    db " is task ", 0
+run_msg_killed  db "[run] program killed", 10, 0
+run_msg_kill_usage db "usage: kill <task id of a program run with &>", 10, 0
 
 section .bss
 alignb 8
