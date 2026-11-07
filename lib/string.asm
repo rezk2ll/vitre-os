@@ -27,6 +27,31 @@ str_skip:
     jne .next
     ret
 
+; name: str_put_dec
+; in:   rdi = buffer of at least 21 bytes, rsi = unsigned number
+; out:  the number written in decimal and terminated, rdi at the terminator
+; clobbers: rax, rcx, rdx, rsi
+str_put_dec:
+    mov rax, rsi
+    mov ecx, 10
+    xor esi, esi                    ; digits pushed
+.div:
+    xor edx, edx
+    div rcx
+    add edx, '0'
+    push rdx
+    inc esi
+    test rax, rax
+    jnz .div
+.pop:
+    pop rax
+    mov [rdi], al
+    inc rdi
+    dec esi
+    jnz .pop
+    mov byte [rdi], 0
+    ret
+
 ; name: str_has_word
 ; in:   rdi = word, rsi = space-separated words (both zero-terminated)
 ; out:  ZF=1 if the word is one of the words
