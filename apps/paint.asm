@@ -29,6 +29,11 @@ cmd_paint:
     call pt_clear
     mov r12d, PT_NONE               ; where the last dab went, if the
     xor r13d, r13d                  ; button is still down
+.release:                           ; the desktop starts apps on the press,
+    test byte [rel mouse_buttons], 3 ; so the click that opened Paint is
+    jz .loop                        ; still held
+    call task_yield
+    jmp .release
 .loop:
     call kbd_poll
     jz .mouse
