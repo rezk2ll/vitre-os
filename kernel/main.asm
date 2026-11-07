@@ -168,6 +168,7 @@ selftest_pit:
 %include "glass/disfmt.asm"
 %include "glass/dis.asm"
 %include "glass/disops.asm"
+%include "glass/disgrp.asm"
 %include "glass/discmd.asm"
 
 msg_long_mode  db "[boot] long mode ok", 10, 0
