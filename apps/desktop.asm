@@ -7,8 +7,8 @@ DT_BAR_H    equ 24
 DT_TILE_W   equ 200
 DT_TILE_H   equ 140
 DT_GAP      equ 40
-DT_COLS     equ 3
-DT_TILES    equ 6
+DT_COLS     equ 4
+DT_TILES    equ 8
 DT_ENTRY    equ 32                  ; label, action, argument, colour, letter
 DT_SCALE    equ 4                   ; icon letters are the font at 4x
 DT_OUTLINE  equ 3                   ; the hovered tile's border, in pixels
@@ -431,6 +431,8 @@ dt_tiles:
     dt_tile dt_l_web, 7, cmd_browse, dt_empty, 0x005e81ac, 'W'
     dt_tile dt_l_glass, 5, cmd_glass, dt_empty, 0x00b48ead, 'G'
     dt_tile dt_l_edit, 6, cmd_edit, dt_edit_path, 0x00a3be8c, 'E'
+    dt_tile dt_l_top, 7, cmd_top, dt_empty, 0x0088c0d0, 'M'
+    dt_tile dt_l_snake, 5, cmd_run, dt_snake_path, 0x00ebcb8b, 'S'
     dt_tile dt_l_reboot, 6, cmd_reboot, 0, 0x00d08770, 'R'
     dt_tile dt_l_off, 9, cmd_shutdown, 0, 0x00bf616a, 'O'
 
@@ -438,15 +440,18 @@ dt_l_term        db "Terminal", 0
 dt_l_web         db "Browser", 0
 dt_l_glass       db "Glass", 0
 dt_l_edit        db "Editor", 0
+dt_l_top         db "Monitor", 0
+dt_l_snake       db "Snake", 0
 dt_l_reboot      db "Reboot", 0
 dt_l_off         db "Shut down", 0
 dt_msg_name      db "Vitre", 0
-dt_msg_hint      db "click a tile or press 1 to 6; q goes back to the shell"
+dt_msg_hint      db "click a tile or press 1 to 8; q goes back to the shell"
 dt_msg_hint_len  equ $ - dt_msg_hint
                  db 0
 dt_clock_layout  db "####-##-## ##:##", 0
 dt_clock_len     equ $ - dt_clock_layout - 1
 dt_edit_path     db "kernel/report.asm", 0
+dt_snake_path    db "snake.asm", 0
 
 section .bss
 dt_empty      resb 1
