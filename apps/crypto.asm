@@ -79,6 +79,17 @@ cr_hkdf:                            ; salt, input key, info, one-byte length
     movzx r8d, byte [rel cr_arg + 3 * CR_MAX]
     call hkdf_expand
     movzx esi, byte [rel cr_arg + 3 * CR_MAX]
+    jmp cr_print_out
+
+cr_chacha20:                        ; key, nonce, one-byte counter, data
+    lea rdi, [rel cr_arg]
+    movzx esi, byte [rel cr_arg + 2 * CR_MAX]
+    lea rdx, [rel cr_arg + CR_MAX]
+    lea rcx, [rel cr_arg + 3 * CR_MAX]
+    mov r8d, [rel cr_lens + 12]
+    lea r9, [rel cr_out]
+    call chacha20_xor
+    mov esi, [rel cr_lens + 12]
 cr_print_out:
     lea rdi, [rel cr_out]
     jmp cr_print
@@ -212,12 +223,15 @@ cr_table:
     dq cr_n_sha256, cr_sha256, 1
     dq cr_n_hmac, cr_hmac, 2
     dq cr_n_hkdf, cr_hkdf, 4
+    dq cr_n_chacha20, cr_chacha20, 4
     dq 0
 
-cr_n_sha256  db "sha256", 0
-cr_n_hmac    db "hmac", 0
-cr_n_hkdf    db "hkdf", 0
+cr_n_sha256   db "sha256", 0
+cr_n_hmac     db "hmac", 0
+cr_n_hkdf     db "hkdf", 0
+cr_n_chacha20 db "chacha20", 0
 cr_msg_usage db "usage: crypto sha256 <data> | hmac <key> <data> | hkdf <salt> <key> <info> <len>", 10
+             db "       | chacha20 <key> <nonce> <counter> <data>", 10
              db "       inputs in hex, - for an empty one", 10, 0
 
 section .bss
@@ -226,5 +240,5 @@ cr_lens resd CR_ARGS
 cr_ctx  resb SHA_CTX_SIZE
 cr_prk  resb 32
 cr_arg  resb CR_ARGS * CR_MAX
-cr_out  resb 256
+cr_out  resb CR_MAX
 section .text
