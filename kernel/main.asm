@@ -52,6 +52,7 @@ kernel_entry:
 
     call pmm_init
     call [rel jt_pmm_log]
+    call prov_init
     call idt_init
     call pic_init
     call pit_init
@@ -143,6 +144,7 @@ selftest_pit:
 %include "glass/console.asm"
 %include "glass/scrollback.asm"
 %include "glass/cursor.asm"
+%include "glass/provenance.asm"
 %include "drivers/keyboard.asm"
 %include "drivers/mouse.asm"
 %include "kernel/pmm.asm"
