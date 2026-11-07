@@ -168,6 +168,30 @@ cr_pmul:                            ; a, b: a*b mod the P-256 prime
     call mm_mul
     jmp cr_mm_out
 
+cr_ecmul:                           ; k, point x and y: the x of k times it
+    lea rdi, [rel ec_u1]
+    xor eax, eax
+    mov ecx, 4
+    rep stosq
+    lea rdi, [rel ec_u2]
+    lea rsi, [rel cr_arg]
+    call num_load
+    lea rdi, [rel cr_arg + CR_MAX]
+    call ec_load_key
+    jc .bad
+    call ec_table
+    call ec_mul2
+    call ec_affine_x
+    jc .bad
+    lea rdi, [rel cr_out]
+    lea rsi, [rel ec_t1]
+    call num_store
+    mov esi, 32
+    jmp cr_print_out
+.bad:
+    xor esi, esi
+    jmp cr_print_out
+
 cr_ninv:                            ; a: 1/a mod the P-256 group order
     lea rbx, [rel mm_n256]
     call cr_mm_args
@@ -362,6 +386,7 @@ cr_table:
     dq cr_n_label, cr_label, 4
     dq cr_n_pmul, cr_pmul, 2
     dq cr_n_ninv, cr_ninv, 1
+    dq cr_n_ecmul, cr_ecmul, 2
     dq 0
 
 cr_n_sha256   db "sha256", 0
@@ -375,12 +400,14 @@ cr_n_x25519   db "x25519", 0
 cr_n_label    db "label", 0
 cr_n_pmul     db "pmul", 0
 cr_n_ninv     db "ninv", 0
+cr_n_ecmul    db "ecmul", 0
 cr_msg_bad    db "crypto: bad tag", 10, 0
 cr_msg_usage db "usage: crypto sha256 <data> | hmac <key> <data> | hkdf <salt> <key> <info> <len>", 10
              db "       | chacha20 <key> <nonce> <counter> <data> | poly1305 <key> <data>", 10
              db "       | seal|open <key> <nonce> <additional data> <data> | x25519 <scalar> <u>", 10
              db "       | label <secret> <label> <context> <len> (TLS 1.3 HKDF-Expand-Label)", 10
              db "       | pmul <a> <b> (mod the P-256 prime) | ninv <a> (1/a mod its order)", 10
+             db "       | ecmul <k> <x y> (x of k times a P-256 point)", 10
              db "       inputs in hex, - for an empty one", 10, 0
 
 section .bss
