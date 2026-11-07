@@ -10,33 +10,13 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/100%25-assembly-6e4a7e?style=for-the-badge" alt="100% assembly">
-  <img src="https://img.shields.io/badge/lines%20of%20C-0-black?style=for-the-badge" alt="0 lines of C">
-  <img src="https://img.shields.io/badge/x86--64-long%20mode-0a66c2?style=for-the-badge" alt="x86-64 long mode">
-  <img src="https://img.shields.io/badge/kernel-137%20KiB-2ea44f?style=for-the-badge" alt="kernel 137 KiB">
-</p>
-
-<p align="center">
   <a href="https://github.com/rezk2ll/vitre-os/actions/workflows/ci.yml"><img src="https://github.com/rezk2ll/vitre-os/actions/workflows/ci.yml/badge.svg" alt="ci"></a>
-  <img src="https://img.shields.io/badge/tests-72%20in%20QEMU-brightgreen" alt="72 tests in QEMU">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT license"></a>
-  <img src="https://img.shields.io/badge/source-21k%20lines-orange" alt="21k lines">
-  <img src="https://img.shields.io/badge/dependencies-0-brightgreen" alt="no dependencies">
-  <img src="https://img.shields.io/badge/boot-BIOS%20%2B%20VBE-lightgrey" alt="BIOS and VBE boot">
+  <img src="https://img.shields.io/badge/100%25-assembly-6e4a7e" alt="100% assembly">
+  <img src="https://img.shields.io/badge/arch-x86--64-0a66c2" alt="x86-64">
+  <img src="https://img.shields.io/badge/kernel-137%20KiB-2ea44f" alt="kernel 137 KiB">
   <img src="https://img.shields.io/badge/assembler-NASM%202.16-1f425f" alt="NASM 2.16">
-  <img src="https://img.shields.io/badge/runs%20on-QEMU%20%7C%20KVM-ff6600" alt="QEMU or KVM">
-  <br>
-  <img src="https://img.shields.io/badge/TLS-1.3-8a2be2" alt="TLS 1.3">
-  <img src="https://img.shields.io/badge/browser-HTTPS-8a2be2" alt="HTTPS browser">
-  <img src="https://img.shields.io/badge/live%20patching-with%20rollback-d73a49" alt="live patching with rollback">
-  <img src="https://img.shields.io/badge/in--OS%20assembler-Forge-d73a49" alt="in-OS assembler">
-  <img src="https://img.shields.io/badge/keyboard-AZERTY%20%7C%20QWERTY-555" alt="AZERTY or QWERTY">
-  <br>
-  <img src="https://img.shields.io/github/last-commit/rezk2ll/vitre-os" alt="last commit">
-  <img src="https://img.shields.io/github/commit-activity/w/rezk2ll/vitre-os" alt="commit activity">
-  <img src="https://img.shields.io/github/issues-pr-closed/rezk2ll/vitre-os?label=merged%20PRs" alt="closed PRs">
-  <img src="https://img.shields.io/github/repo-size/rezk2ll/vitre-os" alt="repo size">
-  <img src="https://img.shields.io/github/stars/rezk2ll/vitre-os?style=social" alt="stars">
+  <img src="https://img.shields.io/badge/runs%20on-QEMU-ff6600" alt="QEMU">
 </p>
 
 <p align="center">
