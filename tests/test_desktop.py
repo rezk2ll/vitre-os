@@ -4,6 +4,7 @@ from harness import SHELL_READY, TestFailure, Vm
 from test_mouse import move, pixel
 
 BROWSER_TILE = (0x5e, 0x81, 0xac)
+OUTLINE = (0xec, 0xef, 0xf4)
 
 
 def click(vm):
@@ -27,6 +28,10 @@ def test_desktop_opens_apps():
         vm.sendkeys("desktop\n")
         wait_pixel(vm, 420, 230, BROWSER_TILE)
         move(vm, 0, -90)                # onto the Browser tile
+        wait_pixel(vm, 420, 225, OUTLINE)
+        move(vm, 0, 100)                # into the gap below it
+        wait_pixel(vm, 420, 225, BROWSER_TILE)
+        move(vm, 0, -100)
         click(vm)
         vm.wait_screen(r"Vitre browser")
         vm.sendkeys("q")

@@ -1,6 +1,7 @@
 ; Desktop: `desktop` takes the screen and shows a launcher, a tile per app
-; under a bar with the clock. A click on a tile, or its number, opens the
-; app; the desktop comes back when it ends. q or Esc return to the shell.
+; under a bar with the clock. The tile under the pointer is outlined; a
+; click on a tile, or its number, opens the app; the desktop comes back
+; when it ends. q or Esc return to the shell.
 
 DT_BAR_H    equ 24
 DT_TILE_W   equ 200
@@ -10,6 +11,8 @@ DT_COLS     equ 3
 DT_TILES    equ 6
 DT_ENTRY    equ 32                  ; label, action, argument, colour, letter
 DT_SCALE    equ 4                   ; icon letters are the font at 4x
+DT_OUTLINE  equ 3                   ; the hovered tile's border, in pixels
+DT_NONE     equ 0xff
 DT_BAR_BG   equ 0x000f141e
 DT_TEXT     equ 0x00eceff4
 DT_DIM      equ 0x009aa5b8
@@ -31,19 +34,18 @@ cmd_desktop:
     je .no_screen
 .redraw:
     call dt_draw
+    call mouse_click                ; forget clicks made in the app
+    mov byte [rel dt_hover], DT_NONE
     mov r12, [rel timer_ticks]
 .loop:
     call kbd_poll
     jnz .key
-    movzx eax, byte [rel mouse_buttons]
-    movzx ecx, byte [rel dt_buttons]
-    mov [rel dt_buttons], al
-    not ecx
-    and eax, ecx
-    test eax, 1                     ; the left button just went down
-    jz .tick
+    call mouse_click
+    jc .hover
     call dt_hit
     jnc .launch
+.hover:
+    call dt_hover_update
 .tick:
     mov rax, [rel timer_ticks]
     sub rax, r12
@@ -354,6 +356,75 @@ dt_hit:
     stc
     ret
 
+; name: dt_hover_update
+; in:   none
+; out:  the tile under the pointer outlined, the one before drawn plain
+; clobbers: caller-saved
+dt_hover_update:
+    push rbx
+    mov ebx, DT_NONE
+    cmp qword [rel mouse_moves], 0
+    je .got                         ; no pointer on the screen yet
+    call dt_hit
+    jc .got
+    mov ebx, eax
+.got:
+    movzx edi, byte [rel dt_hover]
+    cmp edi, ebx
+    je .ret
+    mov [rel dt_hover], bl
+    cmp edi, DT_NONE
+    je .outline
+    call dt_tile_draw
+.outline:
+    cmp ebx, DT_NONE
+    je .ret
+    mov edi, ebx
+    call dt_outline
+.ret:
+    pop rbx
+    ret
+
+; name: dt_outline
+; in:   edi = tile index
+; out:  a light border drawn just inside the tile
+; clobbers: caller-saved
+dt_outline:
+    push r12
+    push r13
+    sub rsp, 8
+    call dt_origin
+    mov r12, rax
+    mov r13, rdx
+    mov rdi, r12                    ; top
+    mov rsi, r13
+    mov edx, DT_TILE_W
+    mov ecx, DT_OUTLINE
+    mov r8d, DT_TEXT
+    call fb_fill_rect
+    mov rdi, r12                    ; bottom
+    lea rsi, [r13 + DT_TILE_H - DT_OUTLINE]
+    mov edx, DT_TILE_W
+    mov ecx, DT_OUTLINE
+    mov r8d, DT_TEXT
+    call fb_fill_rect
+    mov rdi, r12                    ; left
+    mov rsi, r13
+    mov edx, DT_OUTLINE
+    mov ecx, DT_TILE_H
+    mov r8d, DT_TEXT
+    call fb_fill_rect
+    lea rdi, [r12 + DT_TILE_W - DT_OUTLINE]
+    mov rsi, r13                    ; right
+    mov edx, DT_OUTLINE
+    mov ecx, DT_TILE_H
+    mov r8d, DT_TEXT
+    call fb_fill_rect
+    add rsp, 8
+    pop r13
+    pop r12
+    ret
+
 align 8
 dt_tiles:
     dt_tile dt_l_term, 8, 0, 0, 0x002e3440, '>'
@@ -379,6 +450,6 @@ dt_edit_path     db "kernel/report.asm", 0
 
 section .bss
 dt_empty      resb 1
-dt_buttons    resb 1
+dt_hover      resb 1                ; the outlined tile, DT_NONE for none
 dt_clock_text resb 32
 section .text
