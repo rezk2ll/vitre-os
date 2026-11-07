@@ -131,7 +131,10 @@ isr_default:
     ret
 .exception:
     call patch_fault
+    jnc .resume
+    call run_fault
     jc exception_fatal
+.resume:
     ret
 
 ; Stubs: vectors with a CPU error code are 8, 10-14, 17, 21, 29, 30.

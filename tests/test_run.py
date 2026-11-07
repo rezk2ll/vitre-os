@@ -59,3 +59,19 @@ def test_write_and_run_a_program():
         out, pos = run(vm, "run bad.asm", pos)
         if not re.fullmatch(r"\[run\] bad\.asm: line 1: .+", out):
             raise TestFailure(f"bad.asm: {out!r}")
+
+
+def test_a_crashing_program_stops_and_the_shell_lives():
+    with Vm("run_crash") as vm:
+        pos = vm.wait_for(SHELL_READY).end()
+        pos = write_file(vm, "div.asm", "    xor ecx, ecx\n    div rcx\n    ret\n", pos)
+        out, pos = run(vm, "run div.asm", pos)
+        if not re.search(r"\[run\] #DE at [0-9a-f]{16}, program stopped", out):
+            raise TestFailure(f"div.asm: {out!r}")
+        pos = write_file(vm, "far.asm", "    mov rax, 0x10000000000\n    mov rax, [rax]\n    ret\n", pos)
+        out, pos = run(vm, "run far.asm", pos)
+        if not re.search(r"\[run\] #PF at [0-9a-f]{16}, program stopped", out):
+            raise TestFailure(f"far.asm: {out!r}")
+        out, pos = run(vm, "run hello.asm", pos)
+        if not out.startswith("Hello, world!"):
+            raise TestFailure(f"shell after the crashes: {out!r}")
