@@ -141,6 +141,7 @@ selftest_pit:
 %include "drivers/fb.asm"
 %include "glass/font.asm"
 %include "glass/console.asm"
+%include "glass/cursor.asm"
 %include "drivers/keyboard.asm"
 %include "drivers/mouse.asm"
 %include "kernel/pmm.asm"
