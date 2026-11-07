@@ -1,4 +1,5 @@
 import re
+import time
 
 from harness import SHELL_READY, TestFailure, Vm
 from test_files import write_file
@@ -57,6 +58,21 @@ def test_snake_runs_into_the_wall():
         vm.sendkeys("run snake.asm\n")
         vm.sendkeys("q")
         vm.wait_for(r"snake: score 0\r\n", start=pos)
+
+
+def test_cube_turns():
+    with Vm("run_cube") as vm:
+        pos = vm.wait_for(SHELL_READY).end()
+        vm.sendkeys("run cube.asm\n")
+        time.sleep(2)
+        first = vm.screendump()[2]
+        time.sleep(0.5)
+        if vm.screendump()[2] == first:
+            raise TestFailure("the cube does not move")
+        if bytes((0xbf, 0x61, 0x6a)) not in first:
+            raise TestFailure("no red edge on screen")
+        vm.sendkeys("q")
+        vm.wait_for(r"\r\nvitre> ", start=pos)
 
 
 def test_write_and_run_a_program():
