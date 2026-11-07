@@ -158,6 +158,7 @@ selftest_pit:
 %include "net/udp.asm"
 %include "net/dhcp.asm"
 %include "net/dns.asm"
+%include "net/tcp.asm"
 %include "kernel/report.asm"
 %include "kernel/symbols.asm"
 %include "forge/lex.asm"

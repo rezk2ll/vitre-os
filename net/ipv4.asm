@@ -18,9 +18,15 @@ IP_MTU      equ 1500
 ; out:  ax = the Internet checksum, ready to store as is
 ; clobbers: rax, r8, r9, r10
 net_checksum:
+    xor eax, eax
+
+; name: net_checksum_add
+; in:   rdi = data, esi = length in bytes, eax = sum of words before it
+; out:  ax = the Internet checksum over both
+; clobbers: rax, r8, r9, r10
+net_checksum_add:
     mov r8, rdi
     mov r9d, esi
-    xor eax, eax
 .word:
     cmp r9d, 2
     jb .odd
@@ -92,6 +98,8 @@ ip_input:
     je icmp_input
     cmp r8d, IP_PROTO_UDP
     je udp_input
+    cmp r8d, IP_PROTO_TCP
+    je tcp_input
 .drop:
     ret
 
