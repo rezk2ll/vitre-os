@@ -26,7 +26,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/images/desktop.gif" width="800" alt="Vitre boots to its desktop, opens the browser and loads a Wikipedia article over HTTPS">
+  <img src="docs/images/desktop.gif" width="800" alt="Vitre's desktop: a right click runs hello.asm and the turning cube, then the browser loads a Wikipedia article over HTTPS">
 </p>
 
 ## Try it
