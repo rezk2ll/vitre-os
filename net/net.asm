@@ -81,13 +81,6 @@ cmd_net:
     add rsp, 8
     ret
 
-; name: eth_input
-; in:   rdi = frame, esi = length
-; out:  none; frames are only counted until a protocol layer handles them
-; clobbers: none
-eth_input:
-    ret
-
 net_ip dd 0x0f02000a                ; 10.0.2.15, QEMU's user network
 
 net_msg_none      db "[net] no network card", 10, 0

@@ -27,3 +27,11 @@ def test_e1000_comes_up():
 def test_no_card_is_reported():
     with Vm("m11_no_net") as vm:
         vm.wait_for(r"\[net\] no network card")
+
+
+def test_arp_resolves_the_gateway():
+    with Vm("m11_arp", net=True) as vm:
+        vm.wait_for(SHELL_READY)
+        run(vm, "arp 10.0.2.2", r"\[arp\] 10\.0\.2\.2 is 52:55:0a:00:02:02")
+        run(vm, "arp", r"\[arp\] 10\.0\.2\.2 is 52:55:0a:00:02:02")
+        run(vm, "arp 10.0.2.300", r"usage: arp")

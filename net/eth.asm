@@ -9,6 +9,22 @@ ETH_TYPE_ARP  equ 0x0806
 ETH_TYPE_IPV4 equ 0x0800
 ETH_MIN       equ 60                ; shorter frames are padded
 
+; name: eth_input
+; in:   rdi = frame, esi = length
+; out:  the payload handed to its protocol; other frames are dropped
+; clobbers: caller-saved
+eth_input:
+    cmp esi, ETH_HDR
+    jb .drop
+    movzx eax, word [rdi + ETH_TYPE]
+    xchg al, ah
+    add rdi, ETH_HDR
+    sub esi, ETH_HDR
+    cmp eax, ETH_TYPE_ARP
+    je arp_input
+.drop:
+    ret
+
 ; name: eth_send
 ; in:   rdi = destination MAC, esi = ether type, rdx = payload, ecx = length
 ;       (at most ETH_FRAME_MAX - ETH_HDR)
