@@ -56,8 +56,11 @@ $(BUILD)/font.bin: glass/font.asm | $(BUILD)
 
 -include $(wildcard $(BUILD)/*.d)
 
+# make run CMDLINE="kbd=qwerty" boots to the shell with a QWERTY keyboard
+CMDLINE ?= desktop
+
 run: $(IMG)
-	$(QEMU) $(QEMU_FLAGS)
+	$(QEMU) $(QEMU_FLAGS) -fw_cfg name=opt/vitre/cmdline,string="$(CMDLINE)"
 
 # gdb: target remote :1234
 debug: $(IMG)

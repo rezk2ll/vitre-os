@@ -19,6 +19,10 @@ shell_run:
     sub rsp, 8
     lea rdi, [rel shell_msg_ready]
     call kputs
+    lea rdi, [rel shell_opt_desktop]
+    call cmdline_has
+    jnz .line
+    call cmd_desktop
 .line:
     lea rdi, [rel shell_prompt]
     call kputs
@@ -442,6 +446,7 @@ shell_msg_layout_usage db "usage: layout [azerty|qwerty]", 10, 0
 shell_azerty     db "azerty", 0
 shell_qwerty     db "qwerty", 0
 shell_msg_reboot db "[shell] rebooting", 10, 0
+shell_opt_desktop db "desktop", 0
 shell_msg_shutdown db "[shell] powering off", 10, 0
 shell_msg_off    db "[shell] no ACPI power-off here; safe to switch off", 10, 0
 

@@ -4,7 +4,7 @@
 
 A 64-bit operating system written entirely in x86-64 assembly. It carries its own source code, so you can edit a kernel function from inside the running system, assemble it and swap it in live. It also gets online: DHCP, DNS, TCP, a TLS 1.3 client and a small web browser, all in assembly.
 
-![Glass watching a running task](docs/images/glass.png)
+![The desktop](docs/images/desktop.png)
 
 ## Try it
 
@@ -16,7 +16,9 @@ cd vitre-os
 make run
 ```
 
-The keyboard starts in AZERTY. Type `layout qwerty` to switch. Then try:
+It boots to the desktop: click a tile (click once in the QEMU window to give it the mouse, Ctrl+Alt+G to take it back), or press its number. Terminal, or `q`, opens the shell; `desktop` comes back to it, `shutdown` powers off. `make run CMDLINE=` boots straight to the shell.
+
+The keyboard starts in AZERTY. Type `layout qwerty` to switch. In the shell, try:
 
 - `help` lists every command
 - `glass` starts a demo task and watches it live; `p` pauses it, `s` steps it
@@ -34,6 +36,8 @@ Vitre ("glass" in French) is built around two ideas.
 - The debugger is the UI. Glass shows a task's registers, disassembly around RIP, stack with symbols and memory, updating live. Any task can be paused, single-stepped, given a breakpoint, or opened in the editor on the module it is running.
 
 ![The editor on a kernel module](docs/images/editor.png)
+
+![Glass watching a running task](docs/images/glass.png)
 
 ## What's inside
 
