@@ -1,9 +1,26 @@
 import os
 import re
+import subprocess
+import tempfile
 
 from harness import BUILD, SHELL_READY, TestFailure, Vm
 
 PROMPT = r"\r\nvitre> "
+KERNEL_PHYS = 0x100000
+
+# Functions followed by another function, so their range holds only code.
+DIS_FUNCTIONS = [
+    "kputc", "task_create", "sched_tick", "sched_switch", "task_step",
+    "debug_trap", "bp_set", "bp_trap", "parse_dec", "parse_addr",
+    "shell_readline", "shell_execute", "cmd_help", "cmd_uptime", "cmd_layout",
+    "ed_insert", "ed_up", "ed_down", "dis_hex", "dis_reg", "dis_fetch",
+    "src_replace", "patch_apply", "cmd_reboot",
+]
+
+# ndisasm spells some conditions differently; both name the same opcode.
+CC_ALIASES = {"z": "e", "nz": "ne", "c": "b", "nc": "ae", "na": "be",
+              "pe": "p", "po": "np", "nl": "ge", "ng": "le"}
+WORD_ALIASES = {"pushf": "pushfq", "popf": "popfq"}
 
 
 def run(vm, command, start):
@@ -19,6 +36,71 @@ def map_address(name):
             if len(parts) == 3 and parts[2] == name:
                 return int(parts[0], 16)
     raise TestFailure(f"{name} not in kernel.map")
+
+
+def map_labels():
+    with open(os.path.join(BUILD, "kernel.map")) as f:
+        rows = [line.split() for line in f]
+    return sorted((int(r[0], 16), r[2]) for r in rows
+                  if len(r) == 3 and re.fullmatch(r"[0-9A-F]+", r[0])
+                  and "." not in r[2] and int(r[0], 16) >= KERNEL_PHYS)
+
+
+def mnemonic(text):
+    words = text.replace(",", " ").split()
+    while words and words[0] in ("lock", "rep"):
+        words = words[1:]
+    word = WORD_ALIASES.get(words[0], words[0])
+    for prefix in ("cmov", "set", "j"):
+        if word.startswith(prefix) and word != "jmp":
+            cc = word[len(prefix):]
+            return prefix + CC_ALIASES.get(cc, cc)
+    return word
+
+
+def ndisasm(start, end):
+    with open(os.path.join(BUILD, "kernel.bin"), "rb") as f:
+        f.seek(start - KERNEL_PHYS)
+        code = f.read(end - start)
+    with tempfile.NamedTemporaryFile() as tmp:
+        tmp.write(code)
+        tmp.flush()
+        out = subprocess.run(["ndisasm", "-b", "64", "-o", hex(start), tmp.name],
+                             capture_output=True, text=True, check=True).stdout
+    rows = []
+    for line in out.splitlines():
+        parts = line.split(None, 2)
+        if len(parts) == 3:         # continuation lines carry only bytes
+            rows.append((int(parts[0], 16), mnemonic(parts[2])))
+    return rows
+
+
+def test_disassembler_matches_ndisasm():
+    labels = map_labels()
+    ends = {name: labels[i + 1][0] for i, (_, name) in enumerate(labels[:-1])}
+    starts = {name: addr for addr, name in labels}
+    with Vm("m10_dis") as vm:
+        pos = vm.wait_for(SHELL_READY).end()
+        for name in DIS_FUNCTIONS:
+            want = ndisasm(starts[name], ends[name])
+            got = []
+            while len(got) < len(want):
+                addr = want[len(got)][0]
+                count = min(64, len(want) - len(got))
+                out, pos = run(vm, f"dis {addr:#x} {count}", pos)
+                before = len(got)
+                for m in re.finditer(r"  ([0-9a-f]{16})  (.*?)(?:\r\n|$)", out):
+                    got.append((int(m.group(1), 16), mnemonic(m.group(2))))
+                    if got[-1] != want[len(got) - 1]:
+                        break
+                if len(got) == before or got[-1] != want[len(got) - 1]:
+                    break
+            for (ga, gm), (wa, wm) in zip(got, want):
+                if (ga, gm) != (wa, wm):
+                    raise TestFailure(f"{name}: at {wa:#x} ndisasm says {wm}, "
+                                      f"Vitre says {gm} at {ga:#x}:\n{out}")
+            if len(got) < len(want):
+                raise TestFailure(f"{name}: Vitre printed {len(got)} of {len(want)} lines:\n{out}")
 
 
 def test_single_step_advances_rip():
