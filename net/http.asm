@@ -2,6 +2,7 @@
 ; server closes it.
 
 HTTP_PORT     equ 80
+HTTPS_PORT    equ 443
 HTTP_REQ_MAX  equ 512
 HTTP_IDLE_MS  equ 10000
 
@@ -16,11 +17,23 @@ http_get:
     push r12
     push r13
     mov rbx, rdi
+    mov byte [rel http_tls], 1
+    mov dword [rel http_port], HTTPS_PORT
+    lea rsi, [rel http_scheme_tls]
+    mov ecx, 8
+    repe cmpsb
+    je .tls
+    mov byte [rel http_tls], 0
+    mov dword [rel http_port], HTTP_PORT
+    mov rdi, rbx
     lea rsi, [rel http_scheme]
     mov ecx, 7
     repe cmpsb
     jne .host
     add rbx, 7
+    jmp .host
+.tls:
+    add rbx, 8
 .host:
     lea rdi, [rel http_host]
     mov rsi, rbx
@@ -40,7 +53,6 @@ http_get:
     jmp .host_char
 .host_end:
     mov byte [rdi], 0
-    mov dword [rel http_port], HTTP_PORT
     cmp byte [rsi], ':'
     jne .port_end
     xor eax, eax
@@ -89,6 +101,8 @@ http_get:
     mov esi, [rel http_port]
     call tcp_connect
     jc .fail
+    cmp byte [rel http_tls], 0
+    jne .tls_get
     lea rsi, [rel http_request]
     mov ecx, r13d
     call tcp_write
@@ -111,6 +125,22 @@ http_get:
     jb .read
 .close:
     call tcp_close
+    clc
+    jmp .done
+.tls_get:
+    lea rdi, [rel http_host]
+    call tls_handshake
+    jc .unsent
+    lea rsi, [rel http_request]
+    mov ecx, r13d
+    mov dl, TLS_APP
+    call tls_send
+    jc .unsent
+    call tls_read_all
+    jc .unsent
+    mov r13d, eax
+    call tcp_close                  ; nothing lands in tcp_rx after this
+    mov [rel tcp_rx_len], r13d
     clc
     jmp .done
 .unsent:
@@ -196,6 +226,11 @@ cmd_get:
 .size:
     lea rdi, [rel http_msg_size]
     call kputs
+    cmp byte [rel http_tls], 0
+    je .bytes
+    lea rdi, [rel http_msg_unverified]
+    call kputs
+.bytes:
     mov edi, [rel tcp_rx_len]
     call [rel jt_kput_dec]
     lea rdi, [rel http_msg_bytes]
@@ -215,16 +250,19 @@ cmd_get:
 HTTP_HOST_MAX equ 256
 
 http_scheme     db "http://"
+http_scheme_tls db "https://"
 http_get_line   db "GET ", 0
 http_root       db "/", 0
 http_host_line  db " HTTP/1.0", 13, 10, "Host: ", 0
 http_tail       db 13, 10, "User-Agent: vitre", 13, 10, "Connection: close", 13, 10, 13, 10, 0
 http_msg_size   db 10, "[http] ", 0
 http_msg_bytes  db " bytes", 10, 0
+http_msg_unverified db "over TLS, certificate NOT verified, ", 0
 http_msg_failed db "[http] no response", 10, 0
 
 section .bss
 http_port    resd 1
+http_tls     resb 1                 ; the last URL was https: not verified
 http_host    resb HTTP_HOST_MAX
 http_request resb HTTP_REQ_MAX
 section .text

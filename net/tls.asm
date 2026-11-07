@@ -58,6 +58,41 @@ tls_handshake:
     lea rsp, [rsp + 8]
     ret
 
+; name: tls_read_all
+; in:   a finished handshake; interrupts on
+; out:  eax = the length of the application data the server sent until it
+;       closed, sent an alert, or went quiet for TLS_WAIT_MS, decrypted to
+;       the front of tcp_rx; CF=1 if a record did not decrypt
+; clobbers: caller-saved
+tls_read_all:
+    push rbx
+    xor ebx, ebx
+.next:
+    call tls_record
+    jc .end
+    cmp al, TLS_APP
+    jne .fail
+    call tls_decrypt
+    jc .done
+    cmp al, TLS_HANDSHAKE           ; a session ticket: not kept
+    je .next
+    cmp al, TLS_APP
+    jne .end                        ; an alert, close_notify or not
+    lea rdi, [rel tcp_rx]           ; behind tls_pos, so never unread data
+    add rdi, rbx
+    add ebx, ecx
+    rep movsb
+    jmp .next
+.fail:
+    stc
+    jmp .done
+.end:
+    mov eax, ebx
+    clc
+.done:
+    pop rbx
+    ret
+
 ; name: tls_finished
 ; in:   rsi = the server's Finished message, ecx = its length
 ; out:  it checked, the client's Finished sent, and both directions on

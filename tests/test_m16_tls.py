@@ -45,6 +45,21 @@ def test_tls_completes_the_handshake():
     assert accepted.wait(5), "the server did not accept our Finished"
 
 
+def test_get_over_https():
+    def answer(tls):
+        request = b""
+        while b"\r\n\r\n" not in request:
+            request += tls.recv(1024)
+        assert request.startswith(b"GET /secret HTTP/1.0\r\n")
+        tls.sendall(b"HTTP/1.0 200 OK\r\n\r\n" + b"sealed " * 1000 + b"end")
+
+    port = serve_tls(answer)
+    with Vm("m16_get", net=True) as vm:
+        vm.wait_for(SHELL_READY)
+        run(vm, f"get https://10.0.2.2:{port}/secret",
+            r"sealed end\s+\[http\] over TLS, certificate NOT verified, 7022 bytes")
+
+
 def test_tls_refuses_a_plain_server():
     port = serve_once(b"HTTP/1.0 200 OK\r\n\r\nnot tls")
     with Vm("m16_plain", net=True) as vm:
