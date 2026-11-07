@@ -369,6 +369,7 @@ shell_commands:
     shell_command "edit", cmd_edit, "edit a module: edit <module>"
     shell_command "patch", cmd_patch, "patch a module live: patch <module>"
     shell_command "rollback", cmd_rollback, "undo the last patch"
+    shell_command "save", cmd_save, "write edited modules to disk"
     shell_command "uptime", cmd_uptime, "time since boot"
     shell_command "layout", cmd_layout, "keyboard layout: layout [azerty|qwerty]"
     shell_command "reboot", cmd_reboot, "restart the machine"
