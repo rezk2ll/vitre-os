@@ -61,6 +61,7 @@ kernel_entry:
     call src_load
     call patch_boot
     call kbd_init
+    call mouse_init
     call net_init
     sti
     lea rdi, [rel msg_interrupts]
@@ -141,6 +142,7 @@ selftest_pit:
 %include "glass/font.asm"
 %include "glass/console.asm"
 %include "drivers/keyboard.asm"
+%include "drivers/mouse.asm"
 %include "kernel/pmm.asm"
 %include "kernel/heap.asm"
 %include "kernel/memtest.asm"

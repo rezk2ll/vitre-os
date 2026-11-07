@@ -417,6 +417,7 @@ shell_commands:
     shell_command "uptime", cmd_uptime, "time since boot"
     shell_command "date", cmd_date, "the date and time, UTC"
     shell_command "layout", cmd_layout, "keyboard layout: layout [azerty|qwerty]"
+    shell_command "mouse", cmd_mouse, "the mouse position and buttons"
     shell_command "reboot", cmd_reboot, "restart the machine"
     shell_command "shutdown", cmd_shutdown, "power the machine off"
     dq 0
