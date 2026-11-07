@@ -225,12 +225,23 @@ br_resolve:
     jz .none
     cmp al, '#'
     je .none
+    mov rdx, rbx                    ; the link's scheme, else the page's
+    call br_after_scheme
+    jc .scheme
+    lea rdx, [rel br_url]
+    call br_after_scheme
+.scheme:
     lea rsi, [rel br_http]
+    sub rax, rdx
+    cmp eax, 8                      ; past "https://"
+    jne .plain
+    lea rsi, [rel br_https]
+.plain:
     call br_append
     mov rdx, rbx
     call br_after_scheme
     mov rsi, rax
-    jc .tail                        ; https is asked for as http
+    jc .tail
     lea rsi, [rbx + 2]
     cmp word [rbx], '//'
     je .tail
@@ -523,6 +534,7 @@ br_msg_link       db "Enter follows link ", 0
 br_msg_go         db "go to:", 0
 br_cursor         db "_", 0
 br_http           db "http://", 0
+br_https          db "https://", 0
 
 br_home:
     db "<title>Vitre browser</title><h1>Vitre browser</h1>"
