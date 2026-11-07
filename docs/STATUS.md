@@ -2,7 +2,7 @@
 
 ## Current milestone
 
-M15 done. Next: M16, TLS 1.3.
+M16 done. Next: M17, certificate chain validation.
 
 ## Milestones
 
@@ -23,6 +23,7 @@ M15 done. Next: M16, TLS 1.3.
 - M13: done. TCP opens one connection at a time, sends with retransmission and receives in order into a 256 KiB buffer. `tcp host port` tries a connection, and `get http://host/path` fetches a page over HTTP/1.0 and prints the raw response.
 - M14: done. An HTML layout turns a page into wrapped lines: block tags break lines, entities are decoded, scripts and styles are skipped, and links are numbered. `view <url>` prints the result. `browse [url]` is a full-screen browser: title and address bars, coloured headings and links, scrolling, links followed by number (relative ones resolved), `g` for an address and `b` for back.
 - M15: done. SHA-256, HMAC, HKDF, ChaCha20, Poly1305, the ChaCha20-Poly1305 AEAD and X25519. `crypto <primitive> <hex>...` runs one on hex inputs, and the tests check each against its RFC vectors and a Python reference.
+- M16: done. A TLS 1.3 client with ChaCha20-Poly1305 and X25519 runs the full handshake and reads the response. `get` and `browse` take `https://` URLs and say the certificate is not verified, and `tls host port` tries only the handshake. Tests run against a local OpenSSL server, and `get https://www.wikipedia.org/` fetches the real page (example.com resolves to 127.0.0.1 on the build host).
 
 ## Stubs
 
@@ -32,5 +33,5 @@ M15 done. Next: M16, TLS 1.3.
 
 - stage1: 512 bytes
 - stage2: 16 KiB slot (code is under 1 KiB)
-- kernel: 106256 bytes (4 KiB interrupt stubs and table, 3.5 KiB font, symbol and label tables, Forge, editor, disassembler, Glass, network stack, browser, crypto)
-- source area: 3047 bytes
+- kernel: 112768 bytes (4 KiB interrupt stubs and table, 3.5 KiB font, symbol and label tables, Forge, editor, disassembler, Glass, network stack, browser, crypto, TLS)
+- source area: 3177 bytes

@@ -124,7 +124,7 @@ A patchable module is a whole file written in the Vitre dialect (docs/DIALECT.md
 - HTTP/1.0 with `Connection: close`: the end of the body is the end of the connection, so there is no chunked encoding or Content-Length to handle.
 - The layout is a grid of character cells with a style per cell, not a box tree. It wraps at the screen width once per page, and scrolling only redraws.
 - Links are followed by typing their number, since there is no mouse driver. The number is shown after the link text.
-- `https://` links are fetched as `http://` until TLS lands (M16). Redirects are shown as the page they return, not followed.
+- Redirects are shown as the page they return, not followed.
 
 ## D25. Crypto
 
@@ -134,3 +134,11 @@ A patchable module is a whole file written in the Vitre dialect (docs/DIALECT.md
 - The ladder swaps with masks and runs all 255 steps, and the AEAD tag compare has no early exit. The final reductions still branch, so this is not a hardened implementation.
 - HMAC, HKDF, Poly1305, the AEAD and X25519 keep their state in fixed buffers: one caller at a time, as TLS runs one connection at a time. SHA-256 takes a context, so transcript hashes can be copied mid-way.
 - Tests type hex at the `crypto` command with `kbd=qwerty`. On AZERTY every digit needs Shift, which doubles the key events and drops keys on long lines.
+
+## D26. TLS
+
+- One suite (TLS_CHACHA20_POLY1305_SHA256) and one group (X25519). Every server tried accepts them, so there is no HelloRetryRequest path: one is refused.
+- Records are decrypted in place in the TCP receive buffer. Handshake messages are copied out and joined, since a Certificate can span records. Application data is moved to the front of the buffer, so `http_body` and the browser read an https response like an http one.
+- The random values come from the TSC and tick count, stirred into a SHA-256 pool. That is not a strong generator: a guessed key share would expose the session.
+- The certificate and CertificateVerify are hashed into the transcript and not checked until M17. `get` and the browser title bar say so on every https page.
+- Session tickets are skipped and an alert ends the response, close_notify or not.
