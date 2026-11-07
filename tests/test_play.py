@@ -3,7 +3,7 @@ import socket
 import threading
 
 from harness import SHELL_READY, TestFailure, Vm
-from test_desktop import wait_pixel
+from test_desktop import open_icon, wait_desktop, wait_pixel
 from test_vivenc import encode
 
 W, H = 64, 48
@@ -81,3 +81,19 @@ def test_play_streams_a_video_in_chunks():
         pos = vm.wait_for(r"\[play\] no Vitre video there\r\n", start=pos).end()
         vm.sendkeys("play\n")
         vm.wait_for(r"usage: play http://host/video\.viv", start=pos)
+
+
+def test_desktop_video_icon_plays_a_url():
+    port = serve_ranges({"/clip.viv": clip()}, [])
+    with Vm("desktop_video", net=True) as vm:
+        pos = vm.wait_for(SHELL_READY).end()
+        vm.sendkeys("desktop\n")
+        wait_desktop(vm)
+        open_icon(vm, "Video")
+        vm.wait_screen(r"video URL")
+        vm.sendkeys(f"http://10.0.2.2:{port}/clip.viv\n")
+        wait_pixel(vm, 512, 384, RED)
+        vm.wait_for(r"\[play\] 40 frames\r\n", start=pos, timeout=30)
+        vm.wait_screen(r"press a key or click to go back")
+        vm.sendkeys(" ")
+        wait_desktop(vm)
