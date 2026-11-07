@@ -87,7 +87,9 @@ dis_decode_more:
     je .group
     jmp .unknown
 .two_byte:
-    jmp .unknown
+    mov esi, r12d
+    call dis_decode_0f
+    jmp .done
 .group:
     mov edi, ebx
     mov esi, r12d
