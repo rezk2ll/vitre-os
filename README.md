@@ -39,7 +39,7 @@ cd vitre-os
 make run
 ```
 
-It boots to the desktop. Click once in the QEMU window to give it the mouse (Ctrl+Alt+G takes it back), then click an icon: apps start, programs run and other files open in the editor. `make run CMDLINE=` boots straight to the shell.
+It boots to the desktop. Click once in the QEMU window to give it the mouse (Ctrl+Alt+G takes it back), then click an icon: apps start, programs run and other files open in the editor. A right click opens a menu to make a new file, or to open, edit or delete one. `make run CMDLINE=` boots straight to the shell.
 
 The keyboard starts in AZERTY. Type `layout qwerty` in the shell to switch.
 

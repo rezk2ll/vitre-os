@@ -2,7 +2,8 @@
 ; icon per app and per user file, in columns from the top left. The icon
 ; under the pointer is outlined. A click opens it: an app starts, a program
 ; runs, any other file opens in the editor, and the desktop comes back when
-; it ends. q or Esc return to the shell.
+; it ends. A right click opens a menu: Open, Edit and Delete on a file, New
+; file on the desktop. q or Esc return to the shell.
 
 DT_BAR_H    equ 24
 DT_MARGIN   equ 16
@@ -22,6 +23,9 @@ DT_TEXT     equ 0x00eceff4
 DT_DIM      equ 0x009aa5b8
 DT_PROGRAM  equ 0x00ebcb8b
 DT_DOC      equ 0x0081a1c1
+DT_MENU_W   equ 136
+DT_ROW      equ 24                  ; a menu entry's height
+DT_MENU_BG  equ 0x003b4252
 
 %macro dt_app 5                     ; label, action, argument, colour, letter
     dq %1, %2, %3
@@ -42,15 +46,26 @@ cmd_desktop:
     call dt_build
     call dt_draw
     call mouse_click                ; forget clicks made in the app
+    call mouse_rclick
     mov byte [rel dt_hover], DT_NONE
     mov r12, [rel timer_ticks]
 .loop:
     call kbd_poll
     jnz .key
     call mouse_click
-    jc .hover
+    jc .right
     call dt_hit
-    jnc .launch
+    jc .right
+    mov edi, eax
+    call dt_launch
+    jc .quit
+    jmp .redraw
+.right:
+    call mouse_rclick
+    jc .hover
+    call dt_menu
+    jc .quit
+    jmp .redraw
 .hover:
     call dt_hover_update
 .tick:
@@ -68,18 +83,6 @@ cmd_desktop:
     je .quit
     cmp eax, KEY_ESC
     jne .loop
-    jmp .quit
-.launch:
-    imul eax, eax, DT_ENTRY
-    lea rbx, [rel dt_items]
-    add rbx, rax
-    mov rax, [rbx + 8]
-    test rax, rax
-    jz .quit                        ; Terminal: back to the shell
-    call shell_clear_screen
-    mov rdi, [rbx + 16]
-    call [rbx + 8]
-    jmp .redraw
 .quit:
     call shell_clear_screen
     jmp .done
@@ -151,12 +154,8 @@ dt_build:
 ; clobbers: caller-saved
 dt_open:
     push rbx
-    mov rsi, rdi
-    lea rdi, [rel dt_name]          ; the source area may move under the app
+    call dt_keep
     mov rbx, rdi
-    mov ecx, SRC_NAME_MAX + 1
-    rep movsb
-    mov rdi, rbx
     call str_skip
     cmp dword [rax - 5], ".asm"
     jne .edit
@@ -176,6 +175,223 @@ dt_open:
     mov rdi, rbx
     call cmd_edit
 .done:
+    pop rbx
+    ret
+
+; name: dt_keep
+; in:   rdi = file name
+; out:  rdi = dt_name holding a copy, safe when the source area moves
+; clobbers: rcx, rsi, rdi
+dt_keep:
+    mov rsi, rdi
+    lea rdi, [rel dt_name]
+    mov ecx, SRC_NAME_MAX + 1
+    rep movsb
+    lea rdi, [rel dt_name]
+    ret
+
+; name: dt_launch
+; in:   edi = icon index
+; out:  its app or file opened and ended; CF=1 for Terminal, back to the shell
+; clobbers: caller-saved
+dt_launch:
+    push rbx
+    imul eax, edi, DT_ENTRY
+    lea rbx, [rel dt_items]
+    add rbx, rax
+    cmp qword [rbx + 8], 0
+    stc
+    je .ret
+    call shell_clear_screen
+    mov rdi, [rbx + 16]
+    call [rbx + 8]
+    clc
+.ret:
+    pop rbx
+    ret
+
+; name: dt_edit
+; in:   edi = icon index of a file
+; out:  the file edited
+; clobbers: caller-saved
+dt_edit:
+    sub rsp, 8
+    imul eax, edi, DT_ENTRY
+    lea rdi, [rel dt_items]
+    mov rdi, [rdi + rax + 16]
+    call dt_keep
+    push rdi
+    call shell_clear_screen
+    pop rdi
+    call cmd_edit
+    add rsp, 8
+    clc
+    ret
+
+; name: dt_delete
+; in:   edi = icon index of a file
+; out:  the file removed once y confirms it in the bar
+; clobbers: caller-saved
+dt_delete:
+    push rbx
+    imul eax, edi, DT_ENTRY
+    lea rdi, [rel dt_items]
+    mov rdi, [rdi + rax + 16]
+    call dt_keep
+    xor edi, edi
+    xor esi, esi
+    mov rdx, [rel fb_width]
+    mov ecx, DT_BAR_H
+    mov r8d, DT_BAR_BG
+    call fb_fill_rect
+    mov edi, 12
+    mov esi, 4
+    lea rdx, [rel dt_msg_delete]
+    mov ecx, DT_TEXT
+    mov r8d, DT_BAR_BG
+    call dt_text
+    lea rdi, [rel dt_name]
+    call str_skip
+    lea rbx, [rel dt_name + 1]
+    sub rax, rbx                    ; the name's length
+    lea rbx, [rax * 8 + 12 + dt_msg_delete_len * 8]
+    mov edi, 12 + dt_msg_delete_len * 8
+    mov esi, 4
+    lea rdx, [rel dt_name]
+    mov ecx, DT_TEXT
+    mov r8d, DT_BAR_BG
+    call dt_text
+    mov rdi, rbx
+    mov esi, 4
+    lea rdx, [rel dt_msg_sure]
+    mov ecx, DT_DIM
+    mov r8d, DT_BAR_BG
+    call dt_text
+.wait:
+    call task_yield
+    call kbd_poll
+    jz .wait
+    cmp eax, 'y'
+    jne .ret
+    lea rdi, [rel dt_name]
+    call src_remove
+.ret:
+    clc
+    pop rbx
+    ret
+
+; name: dt_new
+; in:   none
+; out:  a name asked for on the console, then that file opened in the editor
+; clobbers: caller-saved
+dt_new:
+    sub rsp, 8
+    call shell_clear_screen
+    lea rdi, [rel dt_msg_new]
+    call kputs
+    lea rdi, [rel dt_line]
+    call shell_readline
+    test rax, rax
+    jz .ret
+    lea rdi, [rel dt_line]
+    call cmd_edit
+.ret:
+    add rsp, 8
+    clc
+    ret
+
+; name: dt_menu
+; in:   mouse_x, mouse_y
+; out:  a menu at the pointer for the icon under it, or for the desktop; the
+;       entry clicked done. CF=1 if it was Open on Terminal
+; clobbers: caller-saved
+dt_menu:
+    push rbx
+    push r12
+    push r13
+    push r14
+    push r15
+    lea r15, [rel dt_menu_desk]
+    call dt_hit
+    mov r14d, eax                   ; the icon the entries act on
+    jc .place
+    lea r15, [rel dt_menu_file]
+    cmp eax, DT_APPS
+    jae .place
+    lea r15, [rel dt_menu_app]
+.place:
+    xor ebx, ebx                    ; entries
+.count:
+    cmp qword [r15 + rbx * 8], 0
+    je .counted
+    add ebx, 2
+    jmp .count
+.counted:
+    shr ebx, 1
+    mov r12d, [rel mouse_x]         ; kept on the screen
+    mov rax, [rel fb_width]
+    sub rax, DT_MENU_W
+    cmp r12, rax
+    cmova r12, rax
+    mov r13d, [rel mouse_y]
+    imul ecx, ebx, DT_ROW
+    mov rax, [rel fb_height]
+    sub rax, rcx
+    cmp r13, rax
+    cmova r13, rax
+    mov rdi, r12
+    mov rsi, r13
+    mov edx, DT_MENU_W
+    mov r8d, DT_MENU_BG
+    call fb_fill_rect
+    xor ecx, ecx
+.entry:
+    cmp ecx, ebx
+    jae .wait
+    push rcx
+    push rcx
+    lea rdi, [r12 + 12]
+    imul esi, ecx, DT_ROW
+    lea rsi, [r13 + rsi + (DT_ROW - 16) / 2]
+    shl ecx, 4
+    mov rdx, [r15 + rcx]
+    mov ecx, DT_TEXT
+    mov r8d, DT_MENU_BG
+    call dt_text
+    pop rcx
+    pop rcx
+    inc ecx
+    jmp .entry
+.wait:
+    call task_yield
+    call kbd_poll
+    jnz .cancel
+    call mouse_rclick
+    jnc .cancel
+    call mouse_click
+    jc .wait
+    mov eax, [rel mouse_x]
+    sub rax, r12
+    cmp rax, DT_MENU_W
+    jae .cancel
+    mov eax, [rel mouse_y]
+    sub rax, r13
+    xor edx, edx
+    mov ecx, DT_ROW
+    div rcx
+    cmp eax, ebx
+    jae .cancel
+    shl eax, 4
+    mov edi, r14d
+    call [r15 + rax + 8]
+    jmp .ret
+.cancel:
+    clc
+.ret:
+    pop r15
+    pop r14
+    pop r13
+    pop r12
     pop rbx
     ret
 
@@ -585,6 +801,19 @@ dt_apps:
     dt_app dt_l_reboot, cmd_reboot, 0, 0x00d08770, 'R'
     dt_app dt_l_off, cmd_shutdown, 0, 0x00bf616a, 'O'
 
+dt_menu_app      dq dt_m_open, dt_launch, 0
+dt_menu_file     dq dt_m_open, dt_launch, dt_m_edit, dt_edit, dt_m_delete, dt_delete, 0
+dt_menu_desk     dq dt_m_new, dt_new, 0
+
+dt_m_open        db "Open", 0
+dt_m_edit        db "Edit", 0
+dt_m_delete      db "Delete", 0
+dt_m_new         db "New file", 0
+dt_msg_new       db "new file name, empty cancels: ", 0
+dt_msg_delete    db "delete "
+dt_msg_delete_len equ $ - dt_msg_delete
+                 db 0
+dt_msg_sure      db "? y deletes it, any other key keeps it", 0
 dt_l_term        db "Terminal", 0
 dt_l_web         db "Browser", 0
 dt_l_glass       db "Glass", 0
@@ -605,6 +834,7 @@ dt_empty      resb 1
 dt_hover      resb 1                ; the outlined icon, DT_NONE for none
 dt_clock_text resb 32
 dt_name       resb SRC_NAME_MAX + 1
+dt_line       resb SHELL_LINE_MAX
 alignb 8
 dt_count      resd 1
 alignb 8
