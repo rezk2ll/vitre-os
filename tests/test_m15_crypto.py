@@ -94,3 +94,48 @@ def test_chacha20_vectors():
         for key, nonce, counter, data in cases:
             check(vm, f"chacha20 {key.hex()} {nonce.hex()} {counter:02x} {data.hex()}",
                   chacha20(key, nonce, counter, data).hex())
+
+
+def poly1305(key, msg):
+    r = int.from_bytes(key[:16], "little") & 0x0ffffffc0ffffffc0ffffffc0fffffff
+    a, p = 0, (1 << 130) - 5
+    for i in range(0, len(msg), 16):
+        a = (a + int.from_bytes(msg[i:i + 16] + b"\x01", "little")) * r % p
+    return ((a + int.from_bytes(key[16:], "little")) % (1 << 128)).to_bytes(16, "little")
+
+
+def seal(key, nonce, aad, data):
+    def pad(b):
+        return b + bytes(-len(b) % 16)
+    ct = chacha20(key, nonce, 1, data)
+    mac = pad(aad) + pad(ct) + struct.pack("<QQ", len(aad), len(ct))
+    return ct + poly1305(chacha20(key, nonce, 0, bytes(32)), mac)
+
+
+def test_poly1305_and_aead_vectors():
+    rng = random.Random(1305)
+    # RFC 8439 2.5.2, then all-ones r and s with all-ones blocks to push every carry
+    macs = [(bytes.fromhex("85d6be7857556d337f4452fe42d506a80103808afb0db2fd4abff6af4149f51b"),
+             b"Cryptographic Forum Research Group"), (b"\xff" * 32, b"\xff" * 64)]
+    macs += [(rng.randbytes(32), rng.randbytes(n)) for n in (1, 15, 16, 17, 100)]
+    assert poly1305(*macs[0]).hex() == "a8061dc1305136c6c22b8baf0c0127a9"
+    # RFC 8439 2.8.2, then lengths that leave both paddings partial or empty
+    aeads = [(bytes(range(0x80, 0xa0)), bytes.fromhex("070000004041424344454647"),
+              bytes.fromhex("50515253c0c1c2c3c4c5c6c7"),
+              b"Ladies and Gentlemen of the class of '99: If I could offer you only one tip "
+              b"for the future, sunscreen would be it.")]
+    aeads += [(rng.randbytes(32), rng.randbytes(12), rng.randbytes(a), rng.randbytes(n))
+              for a, n in ((0, 0), (5, 1), (16, 64), (13, 200))]
+    assert seal(*aeads[0])[-16:].hex() == "1ae10b594f09e26a7e902ecbd0600691"
+    with Vm("m15_aead", cmdline=QWERTY) as vm:
+        vm.wait_for(SHELL_READY)
+        for key, msg in macs:
+            check(vm, f"poly1305 {key.hex()} {hx(msg)}", poly1305(key, msg).hex())
+        for key, nonce, aad, data in aeads:
+            sealed = seal(key, nonce, aad, data)
+            check(vm, f"seal {key.hex()} {nonce.hex()} {hx(aad)} {hx(data)}", sealed.hex())
+            check(vm, f"open {key.hex()} {nonce.hex()} {hx(aad)} {sealed.hex()}", data.hex())
+        start = len(vm.serial())
+        forged = bytes([sealed[0] ^ 1]) + sealed[1:]
+        vm.sendkeys(f"crypto open {key.hex()} {nonce.hex()} {hx(aad)} {forged.hex()}\n", delay=0.015)
+        vm.wait_for(r"crypto: bad tag", start=start, timeout=30)
