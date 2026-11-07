@@ -1,6 +1,7 @@
-; Inspect mode: F12 in any app freezes the screen under a bar; Esc or F12 puts
-; the screen and the provenance map back as they were. It runs inside the
-; kbd_poll call of the app that read the F12.
+; Inspect mode: F12 in any app freezes the screen under a bar, and a click
+; shows what drew the pixel (glass/inspshow.asm). Esc or F12 puts the screen
+; and the provenance map back as they were. It runs inside the kbd_poll call
+; of the app that read the F12.
 
 INSP_BG      equ 0x002e3440
 INSP_EDGE    equ 0x0088c0d0
@@ -63,6 +64,7 @@ insp_run:
 .mouse:
     call mouse_click
     jc .idle
+    call insp_show
     jmp .loop
 .idle:
     hlt
