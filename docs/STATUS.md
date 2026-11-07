@@ -2,7 +2,7 @@
 
 ## Current milestone
 
-M14 done. Next: M15, crypto primitives.
+M15 done. Next: M16, TLS 1.3.
 
 ## Milestones
 
@@ -22,6 +22,7 @@ M14 done. Next: M15, crypto primitives.
 - M12: done. UDP carries a DHCP client that runs at boot and takes the address, mask, gateway and DNS server from the lease (`dhcp` asks again). `host example.com` resolves A records through that server.
 - M13: done. TCP opens one connection at a time, sends with retransmission and receives in order into a 256 KiB buffer. `tcp host port` tries a connection, and `get http://host/path` fetches a page over HTTP/1.0 and prints the raw response.
 - M14: done. An HTML layout turns a page into wrapped lines: block tags break lines, entities are decoded, scripts and styles are skipped, and links are numbered. `view <url>` prints the result. `browse [url]` is a full-screen browser: title and address bars, coloured headings and links, scrolling, links followed by number (relative ones resolved), `g` for an address and `b` for back.
+- M15: done. SHA-256, HMAC, HKDF, ChaCha20, Poly1305, the ChaCha20-Poly1305 AEAD and X25519. `crypto <primitive> <hex>...` runs one on hex inputs, and the tests check each against its RFC vectors and a Python reference.
 
 ## Stubs
 
@@ -31,5 +32,5 @@ M14 done. Next: M15, crypto primitives.
 
 - stage1: 512 bytes
 - stage2: 16 KiB slot (code is under 1 KiB)
-- kernel: 96632 bytes (4 KiB interrupt stubs and table, 3.5 KiB font, symbol and label tables, Forge, editor, disassembler, Glass, network stack, browser)
+- kernel: 106256 bytes (4 KiB interrupt stubs and table, 3.5 KiB font, symbol and label tables, Forge, editor, disassembler, Glass, network stack, browser, crypto)
 - source area: 3047 bytes

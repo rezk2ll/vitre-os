@@ -125,3 +125,12 @@ A patchable module is a whole file written in the Vitre dialect (docs/DIALECT.md
 - The layout is a grid of character cells with a style per cell, not a box tree. It wraps at the screen width once per page, and scrolling only redraws.
 - Links are followed by typing their number, since there is no mouse driver. The number is shown after the link text.
 - `https://` links are fetched as `http://` until TLS lands (M16). Redirects are shown as the page they return, not followed.
+
+## D25. Crypto
+
+- Only what TLS 1.3 with TLS_CHACHA20_POLY1305_SHA256 and X25519 needs. ChaCha20 needs no AES tables and no special instructions.
+- Plain `mul` everywhere: QEMU's default CPU has no BMI2 or ADX.
+- A field element for X25519 is four 64-bit limbs below 2^256, reduced below p only for output, since 2^256 is 38 mod p. Poly1305 keeps its accumulator in three limbs the same way.
+- The ladder swaps with masks and runs all 255 steps, and the AEAD tag compare has no early exit. The final reductions still branch, so this is not a hardened implementation.
+- HMAC, HKDF, Poly1305, the AEAD and X25519 keep their state in fixed buffers: one caller at a time, as TLS runs one connection at a time. SHA-256 takes a context, so transcript hashes can be copied mid-way.
+- Tests type hex at the `crypto` command with `kbd=qwerty`. On AZERTY every digit needs Shift, which doubles the key events and drops keys on long lines.
