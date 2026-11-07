@@ -197,7 +197,10 @@ dis_decode:
     call dis_reg
     jmp .ok
 .other:
-    jmp .unknown
+    mov edi, ebx
+    mov esi, r12d
+    call dis_decode_more
+    jmp .done
 .rm_reg:
     call dis_form_rm_reg
     jmp .ok
