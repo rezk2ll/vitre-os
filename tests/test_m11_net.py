@@ -21,7 +21,7 @@ def test_e1000_comes_up():
     with Vm("m11_e1000", net=True) as vm:
         vm.wait_for(r"\[net\] e1000 mac 52:54:00:12:34:56 irq \d+")
         vm.wait_for(SHELL_READY)
-        run(vm, "net", r"\[net\] mac 52:54:00:12:34:56, link up, rx \d+ frames, tx 0")
+        run(vm, "net", r"\[net\] mac 52:54:00:12:34:56, link up, rx \d+ frames, tx \d+")
 
 
 def test_no_card_is_reported():

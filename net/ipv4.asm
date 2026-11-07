@@ -79,7 +79,10 @@ ip_input:
     jnz .drop
     mov edx, [rdi + IP_DST]
     cmp edx, [rel net_ip]
+    je .ours
+    cmp edx, 0xffffffff             ; DHCP answers come broadcast
     jne .drop
+.ours:
     movzx r8d, byte [rdi + IP_PROTO]
     mov edx, [rdi + IP_SRC]
     mov esi, eax
@@ -87,6 +90,8 @@ ip_input:
     add rdi, rcx
     cmp r8d, IP_PROTO_ICMP
     je icmp_input
+    cmp r8d, IP_PROTO_UDP
+    je udp_input
 .drop:
     ret
 
@@ -106,7 +111,10 @@ ip_send:
     mov r12d, esi
     mov r13, rdx
     mov r14d, ecx
-    mov eax, ebx                    ; next hop: the host itself on our /24
+    lea rax, [rel arp_broadcast]
+    cmp ebx, 0xffffffff
+    je .build
+    mov eax, ebx                    ; next hop: the host itself on our subnet
     xor eax, [rel net_ip]
     test eax, [rel net_mask]
     jz .hop
