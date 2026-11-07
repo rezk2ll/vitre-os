@@ -6,7 +6,7 @@
 
 <p align="center">
   <b>A 64-bit operating system in pure x86-64 assembly that can rewrite itself while it runs.</b><br>
-  It has a desktop, a mouse, TLS 1.3 and a web browser, and not one line of C.
+  It has a desktop, a mouse, sound, a video player, TLS 1.3 and a web browser, and not one line of C.
 </p>
 
 <p align="center">
@@ -14,7 +14,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT license"></a>
   <img src="https://img.shields.io/badge/100%25-assembly-6e4a7e" alt="100% assembly">
   <img src="https://img.shields.io/badge/arch-x86--64-0a66c2" alt="x86-64">
-  <img src="https://img.shields.io/badge/kernel-137%20KiB-2ea44f" alt="kernel 137 KiB">
+  <img src="https://img.shields.io/badge/kernel-158%20KiB-2ea44f" alt="kernel 158 KiB">
   <img src="https://img.shields.io/badge/assembler-NASM%202.16-1f425f" alt="NASM 2.16">
   <img src="https://img.shields.io/badge/runs%20on-QEMU-ff6600" alt="QEMU">
 </p>
@@ -22,11 +22,12 @@
 <p align="center">
   <a href="#try-it">Try it</a> ·
   <a href="#tour">Tour</a> ·
+  <a href="#shell">Shell</a> ·
   <a href="#docs">Docs</a>
 </p>
 
 <p align="center">
-  <img src="docs/images/desktop.gif" width="800" alt="Vitre's desktop: a right click runs hello.asm and the turning cube, then the browser loads a Wikipedia article over HTTPS">
+  <img src="docs/images/desktop.gif" width="800" alt="Vitre's desktop: drawing a house in Paint, the shaded cube, the sample video, then the browser loads a Wikipedia article over HTTPS">
 </p>
 
 ## Try it
@@ -39,7 +40,7 @@ cd vitre-os
 make run
 ```
 
-It boots to the desktop. Click once in the QEMU window to give it the mouse (Ctrl+Alt+G takes it back), then click an icon: apps start, programs run and other files open in the editor. A right click opens a menu to make a new file, or to open, edit or delete one. `make run CMDLINE=` boots straight to the shell.
+It boots to the desktop. Click once in the QEMU window to give it the mouse (Ctrl+Alt+G takes it back), then click an icon: apps start, programs run and other files open in the editor. A right click opens a menu to make a new file, or to open, edit or delete one.
 
 The keyboard starts in AZERTY. Type `layout qwerty` in the shell to switch.
 
@@ -65,50 +66,56 @@ Every pixel on screen remembers the call chain that drew it. Press F12 in any ap
 
 ### Write a program and run it
 
-Programs are assembly files on the disk. Write one in the editor and `run` it: Vitre assembles it with its own assembler and calls it. A program can call any kernel function by name, and if it crashes, only the program stops.
+Programs are assembly files on the disk. Write one in the editor and `run` it: Vitre assembles it with its own assembler and calls it. A program can call any kernel function by name, and if it crashes, only the program stops. The disk comes with a few: `hello.asm`, `guess.asm`, `snake.asm`, `cube.asm`, a shaded cube that turns, and `song.asm`, a tune written as notes.
 
 <p align="center"><img src="docs/images/programs.gif" width="800" alt="Writing square.asm in the editor, running it, then playing guess.asm"></p>
 
-### Get online
+### Draw and listen
 
-DHCP at boot, then DNS, ICMP, TCP, HTTP and a TLS 1.3 client, all written in assembly.
-
-<p align="center"><img src="docs/images/shell.gif" width="800" alt="The shell running date, host, ping, tasks and uptime"></p>
-
-A few commands to try in the shell:
-
-- `help` lists every command
-- `browse https://www.wikipedia.org/` opens the browser; click a link or type its number
-- `edit kernel/report.asm`, then `patch kernel/report.asm` and `rollback`
-- `glass` watches the newest task, or starts a demo one
-- `ls`, then `run hello.asm` or `run guess.asm`; `save` keeps your files across reboots
-- `beep` or `beep 880` plays a tone on the sound card, `run song.asm` a tune written as notes
-- `paint` draws with the mouse: left draws, right rubs out, the top bar picks the colour
-- `desktop` goes back to the desktop, `shutdown` powers off
-
-Up and Down bring back earlier commands and Tab completes a command name. PgUp, PgDn and the mouse wheel scroll back through earlier output.
+Paint opens from the desktop or with `paint`. The left button draws in the colour picked from the top bar, the right one rubs out, and `[` and `]` change the brush. Sound goes through an AC97 card, which `make run` adds: `beep 880` plays a tone and `run song.asm` plays a tune.
 
 ### Watch a video
 
-`samples/demo.viv` is a 15 second clip with a tune: bouncing balls, and bars that jump with the melody. Serve it, then click the Video icon and type `http://10.0.2.2:8000/demo.viv`:
+`samples/demo.viv` is a 15 second clip with a tune: bouncing balls, and bars that jump with the melody. Serve the folder, then click the Video icon and type `http://10.0.2.2:8000/demo.viv`:
 
 ```sh
 caddy file-server --root samples --listen :8000
 ```
 
-Vitre plays its own video format, `.viv`: 256 colours, only the pixels that changed, 16 kHz sound, cut in chunks it streams with HTTP range requests. `build/vivenc` (also assembly, built by `make test` or `make build/vivenc`) makes one from raw frames and raw sound, so any video ffmpeg reads will do:
+10.0.2.2 is the host as QEMU's network sees it. The server has to answer range requests: Python 3.12's `http.server` ignores them, and then only the first chunk plays. q stops the video.
+
+#### Make your own
+
+`.viv` is Vitre's own format: 256 colours, only the pixels that changed, 16 kHz sound, cut in chunks it streams with HTTP range requests. `build/vivenc`, also assembly, makes one from raw frames and raw sound, so any video ffmpeg reads will do:
 
 ```sh
+make build/vivenc
 yt-dlp -f mp4 -o clip.mp4 <url>
 ffmpeg -i clip.mp4 -f u8 -ac 1 -ar 16000 clip.u8
 ffmpeg -i clip.mp4 -vf scale=320:180,fps=15 -f rawvideo -pix_fmt rgb24 - \
   | build/vivenc 320 180 15 3< clip.u8 > clip.viv
-caddy file-server --listen :8000
 ```
 
-Leave out `3< clip.u8` for a silent video. The sound plays on the AC97 card `make run` adds.
+Leave out `3< clip.u8` for a silent video.
 
-Then click the Video icon and type `http://10.0.2.2:8000/clip.viv`, or run `play` with that URL in the shell. 10.0.2.2 is the host as QEMU's network sees it. The server has to answer range requests. Python 3.12's `http.server` ignores them, and then only the first chunk plays. q stops the video.
+### Get online
+
+DHCP at boot, then DNS, ICMP, TCP, HTTP and a TLS 1.3 client, all written in assembly. `browse https://www.wikipedia.org/` opens the browser: click a link or type its number.
+
+<p align="center"><img src="docs/images/shell.gif" width="800" alt="The shell running date, host, ping, tasks and uptime"></p>
+
+## Shell
+
+The Terminal icon opens it, and `make run CMDLINE=` boots straight to it.
+
+- `help` lists every command
+- `edit kernel/report.asm`, then `patch kernel/report.asm` and `rollback`
+- `glass` watches the newest task, or starts a demo one
+- `ls`, then `run hello.asm`; `save` keeps your files across reboots
+- `play <url>` streams a video, `beep [hz]` plays a tone
+- `desktop` goes back to the desktop, `shutdown` powers off
+
+Up and Down bring back earlier commands and Tab completes a command name. PgUp, PgDn and the mouse wheel scroll back through earlier output.
 
 ## Limits
 
