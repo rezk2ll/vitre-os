@@ -40,13 +40,10 @@ jobs:
           fi
           nasm -v | grep -E 'version 2\.16\.01( |$)'
           qemu-system-x86_64 --version
+      # Without /dev/kvm the tests still run, emulated
       - name: Enable KVM
         run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
-            | sudo tee /etc/udev/rules.d/99-kvm.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-          test -w /dev/kvm
+          if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; else echo "no /dev/kvm"; fi
       - name: Build
         run: make
       - name: Test
