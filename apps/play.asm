@@ -1,6 +1,8 @@
 ; Video player: `play <url>` streams a .viv video (see tools/vivenc.asm)
-; over HTTP or HTTPS, one range request a chunk. The picture is scaled up
-; by a whole number to fill the screen. q or Esc stop it.
+; over HTTP or HTTPS, one range request a chunk. A task fetches the next
+; chunk while this one plays, into the other of two buffers: chunk k always
+; lands in buffer k & 1. The picture is scaled up by a whole number to fill
+; the screen. q or Esc stop it.
 
 PLAY_CHUNK_MAX   equ 200000         ; with its headers, fits tcp_rx
 PLAY_CHUNK_PAGES equ (PLAY_CHUNK_MAX + 4095) / 4096
@@ -8,8 +10,11 @@ PLAY_PIXELS_MAX  equ 640 * 480
 PLAY_FRAME_PAGES equ PLAY_PIXELS_MAX / 4096
 PLAY_SCALE_MAX   equ 8
 PLAY_ROW_PAGES   equ PLAY_SCALE_MAX * 4 ; that many screen rows of 4096 pixels
-PLAY_PAGES       equ PLAY_CHUNK_PAGES + PLAY_FRAME_PAGES + PLAY_ROW_PAGES
+PLAY_PAGES       equ PLAY_CHUNK_PAGES * 2 + PLAY_FRAME_PAGES + PLAY_ROW_PAGES
 PLAY_HEADER      equ 16
+PLAY_BUSY        equ 1              ; a buffer's state
+PLAY_READY       equ 2
+PLAY_END         equ 3
 
 ; name: cmd_play
 ; in:   rdi = arguments: the video's URL
@@ -39,19 +44,25 @@ cmd_play:
     mov [rel play_mem], rax
     mov [rel play_buf], rax
     add rax, PLAY_CHUNK_PAGES * 4096
+    mov [rel play_buf + 8], rax
+    add rax, PLAY_CHUNK_PAGES * 4096
     mov [rel play_frame], rax
     add rax, PLAY_FRAME_PAGES * 4096
     mov [rel play_row], rax
+    mov word [rel play_state], 0
     mov dword [rel play_chunk], PLAY_CHUNK_MAX
-    lea rbx, [rel play_msg_bad]
-    xor r12d, r12d                  ; the chunk playing
-    xor edi, edi
+    xor edi, edi                    ; chunk 0, here: it says the rest
     call play_fetch
-    jc .free
+    lea rbx, [rel play_msg_bad]
+    cmp byte [rel play_state], PLAY_READY
+    jne .free
     call play_header
     jc .free
     call play_setup
-    mov r13d, PLAY_HEADER           ; the next frame in the chunk
+    mov edi, 1
+    call play_fetch_start
+    xor r12d, r12d                  ; the buffer playing
+    mov r13d, PLAY_HEADER           ; the next frame in it
     mov r14, [rel timer_ticks]      ; when frame 0 was due
     xor r15d, r15d                  ; frames shown
 .frame:
@@ -62,11 +73,13 @@ cmd_play:
     cmp eax, KEY_ESC
     je .stop
 .next:
-    mov ecx, [rel play_len]
+    lea rax, [rel play_len]
+    mov ecx, [rax + r12 * 4]
     lea eax, [r13 + 4]
     cmp eax, ecx
     ja .chunk
-    mov rsi, [rel play_buf]
+    lea rax, [rel play_buf]
+    mov rsi, [rax + r12 * 8]
     add rsi, r13
     mov edx, [rsi]
     test edx, edx
@@ -92,13 +105,30 @@ cmd_play:
     inc r15d
     jmp .frame
 .chunk:
-    inc r12d
-    mov edi, r12d
-    call play_fetch
-    jc .stop                        ; past the end of the video
+    xor r12d, 1
+.wait:
+    lea rax, [rel play_state]
+    movzx eax, byte [rax + r12]
+    cmp eax, PLAY_BUSY
+    jne .waited
+    call kbd_poll
+    jz .yield
+    cmp eax, 'q'
+    je .stop
+    cmp eax, KEY_ESC
+    je .stop
+.yield:
+    call task_yield
+    jmp .wait
+.waited:
+    cmp eax, PLAY_READY
+    jne .stop                       ; the end of the video
     xor r13d, r13d
+    mov edi, [rel play_next]        ; the chunk after this one, into the
+    call play_fetch_start           ; buffer just played
     jmp .frame
 .stop:
+    call play_wait
     call shell_clear_screen
     lea rdi, [rel play_msg_done]
     call kputs
@@ -106,6 +136,7 @@ cmd_play:
     call [rel jt_kput_dec]
     lea rbx, [rel play_msg_frames]
 .free:
+    call play_wait
     mov rdi, [rel play_mem]
     mov esi, PLAY_PAGES
     call page_free
@@ -119,14 +150,45 @@ cmd_play:
     pop rbx
     ret
 
+; name: play_fetch_start
+; in:   edi = chunk number
+; out:  a task fetching it into buffer edi & 1, which is marked busy; it is
+;       marked ended if no task could start
+; clobbers: caller-saved
+play_fetch_start:
+    push rbx
+    mov ebx, edi
+    lea eax, [rbx + 1]
+    mov [rel play_next], eax
+    mov eax, ebx
+    and eax, 1
+    lea rcx, [rel play_state]
+    mov byte [rcx + rax], PLAY_BUSY
+    lea rdi, [rel play_fetch]
+    lea rsi, [rel play_task_name]
+    mov edx, ebx
+    call task_create
+    jnc .ret
+    mov eax, ebx
+    and eax, 1
+    lea rcx, [rel play_state]
+    mov byte [rcx + rax], PLAY_END
+.ret:
+    pop rbx
+    ret
+
 ; name: play_fetch
-; in:   edi = chunk number, play_url
-; out:  the chunk in play_buf, play_len bytes; CF=1 if there is no such
-;       chunk or the fetch failed
+; in:   edi = chunk number
+; out:  the chunk in buffer edi & 1 and that buffer ready, or marked ended
+;       when there is no such chunk or the fetch failed
 ; clobbers: caller-saved
 play_fetch:
     push rbx
+    push r12
+    sub rsp, 8
     mov ebx, edi
+    mov r12d, edi
+    and r12d, 1                     ; the buffer
     mov eax, [rel play_chunk]
     imul rax, rbx
     mov [rel http_range_from], rax
@@ -135,32 +197,57 @@ play_fetch:
     mov [rel http_range_to], rax
     mov rdi, [rel play_url]
     call http_get
-    jc .ret
+    jc .end
     cmp dword [rel tcp_rx + 8], " 206"
     je .take
     test ebx, ebx                   ; a server that ignores ranges sends the
-    stc                             ; whole video: only its start is used
-    jnz .ret
+    jnz .end                        ; whole video: only its start is used
     cmp dword [rel tcp_rx + 8], " 200"
-    stc
-    jne .ret
+    jne .end
 .take:
     call http_body
     cmp ecx, [rel play_chunk]
     jbe .copy
     mov ecx, [rel play_chunk]
 .copy:
-    mov [rel play_len], ecx
+    lea rdx, [rel play_len]
+    mov [rdx + r12 * 4], ecx
     mov rsi, rax
-    mov rdi, [rel play_buf]
+    lea rax, [rel play_buf]
+    mov rdi, [rax + r12 * 8]
     rep movsb
-    clc
-.ret:
+    mov al, PLAY_READY
+    jmp .set
+.end:
+    mov al, PLAY_END
+.set:
+    lea rcx, [rel play_state]
+    mov [rcx + r12], al
+    add rsp, 8
+    pop r12
     pop rbx
     ret
 
+; name: play_wait
+; in:   none
+; out:  no fetch task running, so the buffers can go
+; clobbers: caller-saved
+play_wait:
+    sub rsp, 8
+.check:
+    cmp byte [rel play_state], PLAY_BUSY
+    je .yield
+    cmp byte [rel play_state + 1], PLAY_BUSY
+    jne .ret
+.yield:
+    call task_yield
+    jmp .check
+.ret:
+    add rsp, 8
+    ret
+
 ; name: play_header
-; in:   the video's start in play_buf
+; in:   chunk 0 in buffer 0
 ; out:  play_w, play_h, play_fps, play_chunk and play_pixels set from its
 ;       header; CF=1 if it is not a video this player can show
 ; clobbers: rax, rcx, rdx, rsi
@@ -369,6 +456,7 @@ play_draw:
     pop rbx
     ret
 
+play_task_name  db "play fetch", 0
 play_msg_usage  db "usage: play http://host/video.viv", 10, 0
 play_msg_screen db "[play] needs the screen", 10, 0
 play_msg_net    db "[play] needs the network", 10, 0
@@ -381,12 +469,12 @@ section .bss
 alignb 8
 play_mem     resq 1
 play_url     resq 1
-play_buf     resq 1
+play_buf     resq 2
 play_frame   resq 1
 play_row     resq 1
 play_w       resq 1                 ; qwords: divisors of fb_width, fb_height
 play_h       resq 1
-play_len     resd 1                 ; bytes in play_buf
+play_len     resd 2                 ; bytes in each buffer
 play_fps     resd 1
 play_chunk   resd 1
 play_pixels  resd 1
@@ -394,5 +482,7 @@ play_scale   resd 1
 play_span    resd 1                 ; screen pixels a row
 play_x       resd 1
 play_y       resd 1
+play_next    resd 1                 ; the next chunk to fetch
 play_palette resd 256
+play_state   resb 2
 section .text
