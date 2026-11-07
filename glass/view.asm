@@ -8,10 +8,15 @@ GL_TITLE_BG   equ 0x003b4252
 
 ; name: cmd_glass
 ; in:   rdi = "<task id> [0xaddress|label]", the memory pane's address
-;       (RIP by default)
+;       (RIP by default), or "patch" for the live patch
 ; out:  the view ran until q or Esc; the screen is cleared
 ; clobbers: caller-saved
 cmd_glass:
+    push rdi
+    lea rsi, [rel gv_word]
+    call str_eq
+    pop rdi
+    je gv_run
     push rbx
     push r12
     push r13
@@ -224,17 +229,8 @@ gl_render:
 .keys:
     mov rsi, [rel kernel_console + CON_ROWS]
     dec esi
-    xor edi, edi
-    mov edx, 1000
-    mov ecx, GL_TITLE_BG
-    call gl_fill
-    mov rsi, [rel kernel_console + CON_ROWS]
-    dec esi
-    mov edi, 1
     lea rdx, [rel gl_msg_keys]
-    mov ecx, COLOR_FG
-    mov r8d, GL_TITLE_BG
-    call gl_text
+    call gl_bar
     pop r13
     pop r12
     pop rbx
@@ -248,6 +244,31 @@ gl_header:
     mov ecx, GL_ACCENT
     mov r8d, COLOR_BG
     jmp gl_text
+
+; name: gl_bar
+; in:   esi = row, rdx = text
+; out:  the row filled with the title colour and the text drawn on it
+; clobbers: caller-saved
+gl_bar:
+    push rbx
+    push r12
+    sub rsp, 8
+    mov ebx, esi
+    mov r12, rdx
+    xor edi, edi
+    mov edx, 1000
+    mov ecx, GL_TITLE_BG
+    call gl_fill
+    mov edi, 1
+    mov esi, ebx
+    mov rdx, r12
+    mov ecx, COLOR_FG
+    mov r8d, GL_TITLE_BG
+    call gl_text
+    add rsp, 8
+    pop r12
+    pop rbx
+    ret
 
 gl_msg_title     db "glass  ", 0
 gl_msg_running   db "running", 0
