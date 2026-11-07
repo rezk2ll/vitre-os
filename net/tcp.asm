@@ -47,7 +47,7 @@ tcp_checksum:
 ; name: tcp_segment
 ; in:   dl = flags, rsi = data, ecx = length (at most TCP_MSS)
 ; out:  a segment at tcp_snd_nxt sent to the peer, acknowledging
-;       tcp_rcv_nxt; sequence numbers are not advanced
+;       tcp_rcv_nxt; tcp_snd_nxt advanced past its data, SYN and FIN
 ; clobbers: caller-saved
 tcp_segment:
     push rbx
@@ -91,6 +91,14 @@ tcp_segment:
     mov ecx, [rel tcp_peer]
     call tcp_checksum
     mov [rel tcp_packet + TCP_SUM], ax
+    mov eax, ebx                    ; before sending: the answer can come
+    and eax, TCP_F_FIN              ; in before ip_send returns
+    add eax, r13d
+    test bl, TCP_F_SYN
+    jz .advance
+    inc eax
+.advance:
+    add [rel tcp_snd_nxt], eax
     mov edi, [rel tcp_peer]
     mov esi, IP_PROTO_TCP
     lea rdx, [rel tcp_packet]
@@ -267,7 +275,6 @@ tcp_connect:
     mov edx, TCP_F_SYN
     xor ecx, ecx
     call tcp_segment
-    inc dword [rel tcp_snd_nxt]
     call tcp_wait_acked
     jnc .done
     cmp byte [rel tcp_state], TCP_CLOSED
@@ -294,7 +301,6 @@ tcp_close:
     mov edx, TCP_F_FIN | TCP_F_ACK
     xor ecx, ecx
     call tcp_segment
-    inc dword [rel tcp_snd_nxt]
     call tcp_wait_acked
 .closed:
     mov byte [rel tcp_state], TCP_CLOSED
@@ -327,7 +333,6 @@ tcp_write:
     mov rsi, r12
     mov ecx, ebx
     call tcp_segment
-    add [rel tcp_snd_nxt], ebx
     call tcp_wait_acked
     jnc .next
     cmp byte [rel tcp_state], TCP_CLOSED
