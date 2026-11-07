@@ -84,3 +84,12 @@ A patchable module is a whole file written in the Vitre dialect (docs/DIALECT.md
 - For 10 s after a patch, a CPU exception whose RIP is in the new code rolls the patch back and resumes the shell at its prompt. Recovery only runs when interrupts were on (not inside an IRQ handler, which would lose its EOI) and the faulting task is the shell. Anything else stays fatal.
 - `edit` stores into the source area in memory and marks the module edited. `save` writes the whole source area back to its disk sectors. At boot, every module marked edited is patched from its saved source, so edits survive a reboot without rebuilding the image.
 - Known limit: symbol records keep the source offsets from the build, so after an edit they can point at the wrong place in the module text.
+
+## D20. Debugger and Glass
+
+- Stepping sets TF in the task's saved frame, resumes it, and waits up to 1 s for the #DB handler to pause it again. On a timeout, TF is cleared under `cli` so that a stray #DB later is not fatal.
+- Breakpoints are one-shot: the trap restores the original byte, rewinds RIP and drops the breakpoint. That avoids the step-over-and-rearm dance, and in practice a breakpoint is set again when needed.
+- A breakpoint pauses the task only when it is not the shell and interrupts were on. Otherwise it only reports the hit and goes on, because pausing the shell or an IRQ path would hang the machine.
+- The disassembler covers what the kernel itself uses: the one-byte map, the groups, and the parts of the 0x0f map that NASM emits for this code. Anything else prints as `db`. The test compares mnemonics and lengths with ndisasm over the kernel's own functions, which is what Glass shows.
+- The code pane decodes from the start of the enclosing function, so the lines before RIP are real instruction boundaries rather than guesses from decoding backwards.
+- Glass redraws every 100 ms from the task's saved frame and yields between frames, so the watched task keeps running at full speed.
