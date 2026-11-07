@@ -45,6 +45,7 @@ tasktest_body:
     mov rbx, rdi
     xor r12d, r12d
 .line:
+    cli                             ; a switch mid-line would mix the two tasks' text
     lea rdi, [rel tasktest_buf_open]
     call kputs
     mov rdi, rbx
@@ -55,6 +56,7 @@ tasktest_body:
     call [rel jt_kput_dec]
     mov edi, 10
     call kputc
+    sti
     mov edi, 20
     call timer_sleep_ms
     inc r12d
