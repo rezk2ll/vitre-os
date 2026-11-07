@@ -233,11 +233,16 @@ mouse_packet_done:
     jz .ret
     mov eax, esi
     and eax, 7
-    test byte [rel mouse_buttons], 1
-    jnz .buttons
-    test eax, 1
-    jz .buttons
+    movzx edx, byte [rel mouse_buttons]
+    not edx
+    and edx, eax                    ; buttons that just went down
+    test edx, 1
+    jz .right
     inc dword [rel mouse_presses]
+.right:
+    test edx, 2
+    jz .buttons
+    inc dword [rel mouse_rpresses]
 .buttons:
     mov [rel mouse_buttons], al
     movzx eax, byte [rel mouse_packet + 1]
@@ -284,6 +289,21 @@ mouse_click:
     mov eax, [rel mouse_presses]
     cmp eax, [rel mouse_seen]
     mov [rel mouse_seen], eax
+    je .no
+    clc
+    ret
+.no:
+    stc
+    ret
+
+; name: mouse_rclick
+; in:   none
+; out:  CF=0 if the right button went down since the last call, else CF=1
+; clobbers: rax
+mouse_rclick:
+    mov eax, [rel mouse_rpresses]
+    cmp eax, [rel mouse_rseen]
+    mov [rel mouse_rseen], eax
     je .no
     clc
     ret
@@ -349,4 +369,6 @@ alignb 4
 mouse_wheel   resd 1
 mouse_presses resd 1                ; left button presses since boot
 mouse_seen    resd 1                ; mouse_presses at the last mouse_click
+mouse_rpresses resd 1               ; right button presses since boot
+mouse_rseen   resd 1                ; mouse_rpresses at the last mouse_rclick
 section .text
