@@ -168,6 +168,20 @@ def test_task_view_pauses_and_steps():
         vm.wait_for(PROMPT, start=pos)
 
 
+def test_glass_alone_watches_a_task():
+    with Vm("m10_pick") as vm:
+        pos = vm.wait_for(SHELL_READY).end()
+        vm.sendkeys("glass\n")
+        vm.wait_screen(r"glass  spin  running")
+        vm.sendkeys("q")
+        pos = vm.wait_for(PROMPT, start=pos).end()
+        out, pos = run(vm, "tasks", pos)
+        if len(re.findall(r"spin", out)) != 1:
+            raise TestFailure(f"glass should reuse the running task:\n{out}")
+        vm.sendkeys("glass\n")
+        vm.wait_screen(r"glass  spin  running")
+
+
 def test_patch_view_shows_both_versions():
     with Vm("m10_patch_view") as vm:
         pos = vm.wait_for(SHELL_READY).end()

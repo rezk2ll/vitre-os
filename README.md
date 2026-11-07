@@ -19,7 +19,7 @@ make run
 The keyboard starts in AZERTY. Type `layout qwerty` to switch. Then try:
 
 - `help` lists every command
-- `spin`, then `glass 1` watches that task live, and `p`, `s` pause and step it
+- `glass` starts a demo task and watches it live; `p` pauses it, `s` steps it
 - `edit kernel/report.asm` opens the editor on kernel source; `patch kernel/report.asm` runs your edit without a reboot
 - `browse https://www.wikipedia.org/` opens the browser
 - `ping 10.0.2.2`, `host wikipedia.org`, `get http://example.org/`

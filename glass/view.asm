@@ -1,4 +1,4 @@
-; Glass task view: `glass <task id>` takes the screen and shows the task's
+; Glass task view: `glass [task id]` takes the screen and shows the task's
 ; registers, the code around RIP, its stack and memory, redrawn ten times a
 ; second while it runs. Keys: p pause or resume, s step, f open the module
 ; under RIP in the editor, q or Esc leave.
@@ -6,9 +6,30 @@
 GL_REFRESH_MS equ 100
 GL_TITLE_BG   equ 0x003b4252
 
+; name: gl_pick
+; in:   none
+; out:  rax = the newest live task, a spin task started if there is none;
+;       CF=1 if none could be started
+; clobbers: caller-saved
+gl_pick:
+    mov edi, MAX_TASKS
+.down:
+    dec edi
+    jz .start
+    call task_entry
+    jc .down
+    mov eax, edi
+    ret
+.start:
+    lea rdi, [rel spin_task]
+    lea rsi, [rel taskcmd_spin]
+    xor edx, edx
+    jmp task_create
+
 ; name: cmd_glass
-; in:   rdi = "<task id> [0xaddress|label]", the memory pane's address
-;       (RIP by default), or "patch" for the live patch
+; in:   rdi = "[task id] [0xaddress|label]", the memory pane's address
+;       (RIP by default), or "patch" for the live patch; with no id, the
+;       newest task, or a new spin task
 ; out:  the view ran until q or Esc; the screen is cleared
 ; clobbers: caller-saved
 cmd_glass:
@@ -41,8 +62,15 @@ cmd_glass:
     mov [rel gl_mem_addr], rax
 .id:
     mov rdi, rbx
+    cmp byte [rdi], 0
+    jne .parse
+    call gl_pick
+    jc .refused
+    jmp .picked
+.parse:
     call parse_dec
     jc .usage
+.picked:
     cmp rax, MAX_TASKS
     jae .refused
     mov r12d, eax
@@ -278,7 +306,7 @@ gl_msg_code      db "code", 0
 gl_msg_stack     db "stack", 0
 gl_msg_memory    db "memory", 0
 gl_msg_keys      db "p pause/resume   s step   f open in forge   q quit", 0
-gl_msg_usage     db "usage: glass <task id> [0xaddress|label]", 10, 0
+gl_msg_usage     db "usage: glass [task id] [0xaddress|label]", 10, 0
 gl_msg_refused   db "[glass] no such task, or no screen", 10, 0
 gl_msg_ended     db "[glass] the task ended", 10, 0
 
