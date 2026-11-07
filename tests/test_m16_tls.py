@@ -9,15 +9,15 @@ from test_m11_net import run
 from test_m13_tcp import serve_once
 
 
-def serve_tls(handle):
-    """A TLS 1.3 server on the host with a throwaway self-signed certificate,
-    running `handle` on each connection."""
+def serve_tls(handle, *cert_args):
+    """A TLS 1.3 server on the host with a throwaway self-signed certificate
+    (`cert_args` go to openssl req), running `handle` on each connection."""
     ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     ctx.minimum_version = ssl.TLSVersion.TLSv1_3
     with tempfile.TemporaryDirectory() as tmp:
         subprocess.run(["openssl", "req", "-x509", "-newkey", "ec", "-pkeyopt",
                         "ec_paramgen_curve:prime256v1", "-nodes", "-subj", "/CN=vitre.test",
-                        "-keyout", f"{tmp}/key.pem", "-out", f"{tmp}/cert.pem"],
+                        "-keyout", f"{tmp}/key.pem", "-out", f"{tmp}/cert.pem", *cert_args],
                        check=True, capture_output=True)
         ctx.load_cert_chain(f"{tmp}/cert.pem", f"{tmp}/key.pem")
     sock = socket.create_server(("127.0.0.1", 0))
