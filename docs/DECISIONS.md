@@ -63,7 +63,7 @@ Kernel tasks only, round-robin, preempted by the PIT every 10 ms. A task is a sl
 
 ## D16. Jump table and symbol table
 
-`tools/gen.py` runs before the kernel build. It walks `kernel/main.asm` through its includes, in image order, and reads every function header. A `; patchable: yes` function gets a `jt_<name>` qword slot holding its address; callers use `call [rel jt_<name>]`, and the build fails on any direct `call` or `jmp` to it. Every function with a header gets a 64-byte symbol record (address, size up to the next function, jump table slot, source offset, name), so the symbol table also names unpatchable code for the debugger. The generator is a host build helper, like the test harness: the kernel itself stays assembly. The first patchable functions are the log printers (`kput_dec`, `fb_log_mode`, `pmm_log`, `sched_list`), chosen because a broken patch to them shows up at once and cannot take down the exception handler, which prints its vector number on its own.
+`tools/gen.asm` runs before the kernel build. It walks `kernel/main.asm` through its includes, in image order, and reads every function header. A `; patchable: yes` function gets a `jt_<name>` qword slot holding its address; callers use `call [rel jt_<name>]`, and the build fails on any direct `call` or `jmp` to it. Every function with a header gets a 64-byte symbol record (address, size up to the next function, jump table slot, source offset, name), so the symbol table also names unpatchable code for the debugger. The generator is assembly too, a Linux program that runs on the build machine. The first patchable functions are the log printers (`kput_dec`, `fb_log_mode`, `pmm_log`, `sched_list`), chosen because a broken patch to them shows up at once and cannot take down the exception handler, which prints its vector number on its own.
 
 ## D17. Source area and ATA PIO
 
@@ -71,7 +71,7 @@ The source area holds the full text of every file that contains a patchable func
 
 ## D18. Patchable modules and the Forge test
 
-A patchable module is a whole file written in the Vitre dialect (docs/DIALECT.md), so Forge only ever assembles code it fully understands. The log printers moved into `kernel/report.asm` for this. Names a module uses but does not define are resolved through a label table that `tools/gen.py` emits next to the symbol table: every top-level label and `equ` in the image with its value. Because the module is linked into the kernel by NASM, "Forge matches NASM" is checked inside the OS: Forge assembles the module's source from the source area at the address of its first label, and the result must equal the kernel's own bytes at that address.
+A patchable module is a whole file written in the Vitre dialect (docs/DIALECT.md), so Forge only ever assembles code it fully understands. The log printers moved into `kernel/report.asm` for this. Names a module uses but does not define are resolved through a label table that `tools/gen.asm` emits next to the symbol table: every top-level label and `equ` in the image with its value. Because the module is linked into the kernel by NASM, "Forge matches NASM" is checked inside the OS: Forge assembles the module's source from the source area at the address of its first label, and the result must equal the kernel's own bytes at that address.
 
 ## D19. Live patching, rollback and persistence
 

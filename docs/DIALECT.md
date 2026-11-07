@@ -6,7 +6,7 @@ The subset of NASM that patchable modules are written in. Forge, the in-OS assem
 
 - A patchable module is one file, included once in the kernel image. Today there is one: `kernel/report.asm`.
 - It holds functions with the usual header comment and the data they own (`db` strings and constants). No sections, no `.bss`, no macros, no `%` directives.
-- Names it does not define are kernel labels and `equ` constants, resolved through the label table that `tools/gen.py` builds.
+- Names it does not define are kernel labels and `equ` constants, resolved through the label table that `tools/gen.asm` builds.
 
 ## Lines
 

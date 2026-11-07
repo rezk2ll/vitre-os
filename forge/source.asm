@@ -10,7 +10,7 @@ SRC_DIR_ENTRY equ 48
 SRC_DIR_START equ 32
 SRC_DIR_LEN   equ 36
 SRC_DIR_FLAGS equ 40
-SRC_FILES_MAX equ 64                ; as in tools/gen.py
+SRC_FILES_MAX equ 64                ; as in tools/gensrc.asm
 SRC_TEXT      equ SRC_DIR + SRC_FILES_MAX * SRC_DIR_ENTRY
 SRC_NAME_MAX  equ 31
 
