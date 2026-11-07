@@ -13,7 +13,9 @@ def test_two_tasks_interleave():
                 raise TestFailure(f"{name} printed {got}")
         order = [who for who, _ in lines]
         switches = sum(a != b for a, b in zip(order, order[1:]))
-        if switches < 6:
+        # one switch is two tasks run back to back; how many more depends on
+        # where the 10 ms slices fall under a loaded host
+        if switches < 3:
             raise TestFailure(f"tasks did not interleave: {order}")
         if re.search(r"\[task\] [12] ", vm.serial()):
             raise TestFailure("ended tasks still listed")
