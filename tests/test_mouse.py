@@ -5,10 +5,18 @@ from test_m7_shell import run
 
 
 def move(vm, dx, dy, *buttons):
-    events = [{"type": "rel", "data": {"axis": "x", "value": dx}},
-              {"type": "rel", "data": {"axis": "y", "value": dy}}]
-    events += [{"type": "btn", "data": {"down": True, "button": b}} for b in buttons]
-    vm.qmp("input-send-event", events=events)
+    # QEMU's PS/2 queue holds a few packets per event and drains the rest of
+    # a large move later, into the next one, so large moves go in steps
+    steps = max(1, (max(abs(dx), abs(dy)) + 99) // 100)
+    for i in range(steps):
+        sx = dx * (i + 1) // steps - dx * i // steps
+        sy = dy * (i + 1) // steps - dy * i // steps
+        vm.qmp("input-send-event", events=[{"type": "rel", "data": {"axis": "x", "value": sx}},
+                                           {"type": "rel", "data": {"axis": "y", "value": sy}}])
+        time.sleep(0.01)
+    if buttons:
+        vm.qmp("input-send-event", events=[
+            {"type": "btn", "data": {"down": True, "button": b}} for b in buttons])
     time.sleep(0.2)
 
 

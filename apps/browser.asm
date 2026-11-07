@@ -1,8 +1,8 @@
 ; Browser: `browse [url]` takes the screen and shows the page laid out to
 ; its width, headings and links in their own colours, the title above and
 ; the address below. Keys: arrows or j and k scroll a line, space, PgDn
-; and PgUp a screen, Home and End; a link's number then Enter follows it,
-; g types an address, b goes back, q or Esc leave.
+; and PgUp a screen, Home and End; a click on a link, or its number then
+; Enter, follows it; g types an address, b goes back, q or Esc leave.
 
 BR_URL_MAX   equ 256
 BR_HISTORY   equ 16
@@ -20,6 +20,7 @@ cmd_browse:
     je .no_screen
     cmp byte [rel net_ready], 0
     je .no_net
+    call mouse_click                ; forget a click made before the browser
     xor eax, eax
     mov [rel br_depth], eax
     mov [rel br_pick], eax
@@ -36,7 +37,18 @@ cmd_browse:
 .frame:
     call br_render
 .key:
-    call kbd_getc
+    call kbd_poll
+    jnz .got
+    call mouse_click
+    jc .idle
+    call br_click
+    jc .idle
+    mov [rel br_pick], eax
+    jmp .follow
+.idle:
+    call task_yield
+    jmp .key
+.got:
     mov rbx, [rel kernel_console + CON_ROWS]
     sub ebx, 2                      ; a screen of lines
     cmp eax, ' '
@@ -312,6 +324,83 @@ br_resolve:
 .none:
     stc
     pop rbx
+    ret
+
+; name: br_click
+; in:   mouse_x, mouse_y
+; out:  eax = the number of the link under the pointer; CF=1 if none
+; clobbers: rax, rcx, rdx, rsi, rdi
+br_click:
+    mov eax, [rel mouse_y]
+    shr eax, 4
+    dec eax                         ; the title bar's row
+    mov rcx, [rel kernel_console + CON_ROWS]
+    sub ecx, 2
+    cmp eax, ecx
+    jae .none                       ; above or below the page
+    add eax, [rel br_top]
+    cmp eax, [rel html_lines]
+    jae .none
+    shl eax, 7                      ; HTML_COLS cells a line
+    mov ecx, [rel mouse_x]
+    shr ecx, 3
+    dec ecx                         ; the margin
+    cmp ecx, HTML_COLS
+    jae .none
+    add eax, ecx
+    lea rsi, [rel html_style]
+    lea rdi, [rel html_text]
+    mov edx, [rel html_lines]
+    shl edx, 7                      ; the end of the page
+    cmp byte [rsi + rax], HTML_MARK
+    je .mark_start
+    cmp byte [rsi + rax], HTML_LINK
+    jne .none
+.to_mark:                           ; past the link's words to its "[n]"
+    inc eax
+    cmp eax, edx
+    jae .none
+    movzx ecx, byte [rsi + rax]
+    cmp ecx, HTML_MARK
+    je .digits
+    cmp ecx, HTML_LINK
+    je .to_mark
+    cmp ecx, HTML_TEXT
+    jne .none
+    cmp byte [rdi + rax], ' '       ; a wrapped line's padding
+    jbe .to_mark
+    jmp .none
+.mark_start:
+    test eax, eax
+    jz .digits
+    cmp byte [rsi + rax - 1], HTML_MARK
+    jne .digits
+    dec eax
+    jmp .mark_start
+.digits:
+    mov ecx, eax
+    xor eax, eax
+.skip:
+    cmp byte [rsi + rcx], HTML_MARK
+    jne .number
+    movzx edx, byte [rdi + rcx]
+    inc ecx
+    sub edx, '0'
+    cmp edx, 9
+    ja .skip_or_end
+    imul eax, eax, 10
+    add eax, edx
+    jmp .skip
+.skip_or_end:
+    test eax, eax
+    jz .skip                        ; the "["
+.number:
+    test eax, eax
+    jz .none
+    clc
+    ret
+.none:
+    stc
     ret
 
 ; name: br_after_scheme
