@@ -35,3 +35,10 @@ def test_arp_resolves_the_gateway():
         run(vm, "arp 10.0.2.2", r"\[arp\] 10\.0\.2\.2 is 52:55:0a:00:02:02")
         run(vm, "arp", r"\[arp\] 10\.0\.2\.2 is 52:55:0a:00:02:02")
         run(vm, "arp 10.0.2.300", r"usage: arp")
+
+
+def test_ping_gets_a_reply():
+    with Vm("m11_ping", net=True) as vm:
+        vm.wait_for(SHELL_READY)
+        run(vm, "ping 10.0.2.2", r"\[ping\] 4 sent, [1-4] received")
+        vm.wait_for(r"\[ping\] reply from 10\.0\.2\.2 seq 1 time \d+ ms")
