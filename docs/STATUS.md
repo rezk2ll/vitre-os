@@ -2,7 +2,7 @@
 
 ## Current milestone
 
-M9 done. Next: M10, Glass UI panes and the debugger.
+M10 done. Next: M11, PCI, e1000 and the IPv4 stack up to ICMP.
 
 ## Milestones
 
@@ -17,6 +17,7 @@ M9 done. Next: M10, Glass UI panes and the debugger.
 - M7: done. The kernel ends in a shell with `help`, `clear`, `mem`, `tasks`, `syms`, `uptime`, `layout` and `reboot`. Backspace edits the line, Ctrl+C drops it, Ctrl+L clears the screen.
 - M8: done. Forge, the in-kernel assembler for the Vitre dialect, runs multi-pass with growing jumps and resolves names against the module and then the kernel label table. The `forge` command assembles every module in the source area at its linked address and compares the bytes with the running kernel: `kernel/report.asm` matches NASM byte for byte.
 - M9: done. `edit <module>` opens a full-screen editor on a module of the source area (Ctrl+S store, Ctrl+F find, Ctrl+Q quit). `patch <module>` assembles it into fresh pages and swaps its jump table slots under `cli`; `rollback` restores them. A CPU exception in new code within 10 s of a patch rolls it back and returns to the prompt. `save` writes the source area to disk, and boot re-patches every edited module.
+- M10: done. `pause`, `resume` and `step` control a task (`spin` starts one to try them on). `break` sets one-shot int3 breakpoints. `dis` disassembles kernel code, and a test checks it against ndisasm over two dozen functions. `glass <task>` shows a live full-screen view: registers with changes highlighted, code around RIP, the stack with symbols, and memory. Its keys pause, step, or open the module under RIP in the editor.
 
 ## Stubs
 
@@ -26,5 +27,5 @@ M9 done. Next: M10, Glass UI panes and the debugger.
 
 - stage1: 512 bytes
 - stage2: 16 KiB slot (code is under 1 KiB)
-- kernel: 53784 bytes (4 KiB interrupt stubs and table, 3.5 KiB font, symbol and label tables, Forge, editor)
+- kernel: 69984 bytes (4 KiB interrupt stubs and table, 3.5 KiB font, symbol and label tables, Forge, editor, disassembler, Glass)
 - source area: 3047 bytes
