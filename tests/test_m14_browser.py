@@ -3,6 +3,27 @@ from test_m11_net import run
 from test_m13_tcp import serve_once
 
 
+EXAMPLE = b"""<!doctype html>
+<html>
+<head>
+    <title>Example Domain</title>
+    <style type="text/css">
+    body { background-color: #f0f0f2; margin: 0; }
+    </style>
+</head>
+<body>
+<div>
+    <h1>Example Domain</h1>
+    <p>This domain is for use in illustrative examples in documents. You may use this
+    domain in literature without prior coordination or asking for permission.</p>
+    <!-- a comment <p>hidden</p> -->
+    <p>Fish &amp; chips &lt;3 &#65;</p>
+</div>
+</body>
+</html>
+"""
+
+
 def page(html):
     return b"HTTP/1.0 200 OK\r\nContent-Type: text/html\r\n\r\n" + html
 
@@ -13,3 +34,12 @@ def test_view_wraps_words():
     with Vm("m14_view", net=True) as vm:
         vm.wait_for(SHELL_READY)
         run(vm, f"view 10.0.2.2:{port}", r"word00 word01 .*word13\s+word14 .*word27\s+word28 word29\s")
+
+
+def test_view_lays_out_example():
+    port = serve_once(page(EXAMPLE))
+    with Vm("m14_example", net=True) as vm:
+        vm.wait_for(SHELL_READY)
+        text = run(vm, f"view 10.0.2.2:{port}", r"\[view\] Example Domain[\s\S]*Fish & chips <3 A\s").group(0)
+    assert "Example Domain\r\n\r\nThis domain is for use in illustrative examples in documents. You may use this" in text \
+        and not any(s in text for s in ["hidden", "background-color", "<p>", "\n>"]), text
