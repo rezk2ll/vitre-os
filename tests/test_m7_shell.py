@@ -34,3 +34,11 @@ def test_reboot():
         vm.sendkeys("reboot\n")
         vm.wait_for(r"\[shell\] rebooting")
         vm.wait_exit()
+
+
+def test_shutdown():
+    with Vm("m7_shutdown") as vm:
+        vm.wait_for(SHELL_READY)
+        vm.sendkeys("shutdown\n")
+        vm.wait_for(r"\[shell\] powering off")
+        vm.wait_exit()

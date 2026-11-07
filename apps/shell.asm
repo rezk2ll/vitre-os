@@ -352,6 +352,30 @@ cmd_reboot:
     lidt [rel shell_null_idt]       ; still here: any interrupt now triple faults
     int3
 
+; name: cmd_shutdown
+; in:   rdi = arguments (ignored)
+; out:  does not return: the machine powers off through ACPI
+; clobbers: everything
+cmd_shutdown:
+    lea rdi, [rel shell_msg_shutdown]
+    call kputs
+    cli
+    ; PM1a control with SLP_EN: QEMU's PIIX4 and Q35, then older Bochs
+    ; and VirtualBox, which put it elsewhere
+    mov ax, 0x2000
+    mov dx, 0x604
+    out dx, ax
+    mov dx, 0xb004
+    out dx, ax
+    mov ax, 0x3400
+    mov dx, 0x4004
+    out dx, ax
+    lea rdi, [rel shell_msg_off]
+    call kputs
+.halt:
+    hlt
+    jmp .halt
+
 ; name: cmd_tasks
 ; in:   rdi = arguments (ignored)
 ; out:  the task table
@@ -392,6 +416,7 @@ shell_commands:
     shell_command "uptime", cmd_uptime, "time since boot"
     shell_command "layout", cmd_layout, "keyboard layout: layout [azerty|qwerty]"
     shell_command "reboot", cmd_reboot, "restart the machine"
+    shell_command "shutdown", cmd_shutdown, "power the machine off"
     dq 0
 
 shell_null_idt dw 0
@@ -413,6 +438,8 @@ shell_msg_layout_usage db "usage: layout [azerty|qwerty]", 10, 0
 shell_azerty     db "azerty", 0
 shell_qwerty     db "qwerty", 0
 shell_msg_reboot db "[shell] rebooting", 10, 0
+shell_msg_shutdown db "[shell] powering off", 10, 0
+shell_msg_off    db "[shell] no ACPI power-off here; safe to switch off", 10, 0
 
 section .bss
 shell_line resb SHELL_LINE_MAX
