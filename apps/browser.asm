@@ -441,6 +441,8 @@ br_render:
     sub rax, rdx
     cmp eax, 8                      ; past "https://"
     jne .page
+    cmp byte [rel tls_verified], 0
+    jne .page
     mov rdi, [rel kernel_console + CON_COLS]
     sub edi, br_msg_tls_end - br_msg_tls
     xor esi, esi

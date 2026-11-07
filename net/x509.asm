@@ -11,6 +11,7 @@ X5_SAN      equ 48                  ; the subject alternative names' content
 X5_SAN_LEN  equ 56
 X5_ALG     equ 60                  ; X5_ECDSA_SHA256, X5_ECDSA_SHA384 or 0
 X5_KEYOK    equ 61                  ; 1 if the key is a P-256 one
+X5_CA       equ 62                  ; 1 if it may sign certificates
 X5_KEY      equ 64                  ; its x then y
 X5_SIG      equ 128                 ; the signature's r then s
 X5_SIZE     equ 192
@@ -85,6 +86,7 @@ x509_parse:
     mov rbx, rdi
     lea rdx, [rsi + rcx]
     mov byte [rbx + X5_KEYOK], 0
+    mov byte [rbx + X5_CA], 0
     mov qword [rbx + X5_SAN], 0
     mov dword [rbx + X5_SAN_LEN], 0
     mov r8b, 0x30
@@ -254,8 +256,8 @@ x5_key:
 
 ; name: x5_extensions
 ; in:   rbx = record, rsi = the [3] content, ecx = its length
-; out:  the subject alternative names recorded if there are some; CF=1
-;       if the extensions are malformed
+; out:  the subject alternative names and the CA flag recorded if they
+;       are there; CF=1 if the extensions are malformed
 ; clobbers: rax, rcx, rdx, rsi, rdi, r8, r9
 x5_extensions:
     lea rdx, [rsi + rcx]
@@ -274,7 +276,13 @@ x5_extensions:
     lea rdx, [rsi + rcx]
     lea rdi, [rel x5_oid_san]
     call x5_oid_is
+    mov r9d, 0
+    je .known
+    lea rdi, [rel x5_oid_bc]
+    call x5_oid_is
     jne .other
+    mov r9d, 1
+.known:
     mov r8b, 0x06
     call der_expect
     jc .skip
@@ -292,8 +300,18 @@ x5_extensions:
     mov r8b, 0x30
     call der_expect
     jc .skip
+    test r9d, r9d
+    jnz .bc
     mov [rbx + X5_SAN], rsi
     mov [rbx + X5_SAN_LEN], ecx
+    jmp .other
+.bc:
+    cmp ecx, 3
+    jb .other                       ; cA left out: FALSE
+    cmp word [rsi], 0x0101          ; BOOLEAN, 1 byte
+    jne .other
+    cmp byte [rsi + 2], 0
+    setne [rbx + X5_CA]
 .other:
     clc
 .skip:
@@ -302,6 +320,66 @@ x5_extensions:
     jc .ret
     jmp .each
 .ret:
+    ret
+
+; name: x509_signed_by
+; in:   rdi = a parsed certificate, rsi = the CA certificate said to issue it
+; out:  CF=0 if the CA's subject is its issuer and the CA's key signed it
+; clobbers: caller-saved
+x509_signed_by:
+    cmp byte [rsi + X5_CA], 0
+    je .fail
+    cmp byte [rsi + X5_KEYOK], 0
+    je .fail
+    mov ecx, [rdi + X5_ISS_LEN]
+    cmp ecx, [rsi + X5_SUB_LEN]
+    jne .fail
+    push rdi
+    push rsi
+    mov rdi, [rdi + X5_ISSUER]
+    mov rsi, [rsi + X5_SUBJECT]
+    repe cmpsb
+    pop rsi
+    pop rdi
+    jne .fail
+    add rsi, X5_KEY
+    jmp x509_sig_by_key
+.fail:
+    stc
+    ret
+
+; name: x509_sig_by_key
+; in:   rdi = a parsed certificate, rsi = a P-256 key, x then y
+; out:  CF=0 if that key signed it with ECDSA and SHA-256
+; clobbers: caller-saved
+x509_sig_by_key:
+    push rbx
+    push r12
+    sub rsp, 8
+    mov rbx, rdi
+    mov r12, rsi
+    cmp byte [rbx + X5_ALG], X5_ECDSA_SHA256
+    jne .fail
+    lea rdi, [rel x5_ctx]
+    call sha256_init
+    lea rdi, [rel x5_ctx]
+    mov rsi, [rbx + X5_TBS]
+    mov edx, [rbx + X5_TBS_LEN]
+    call sha256_update
+    lea rdi, [rel x5_ctx]
+    lea rsi, [rel x5_hash]
+    call sha256_final
+    mov rdi, r12
+    lea rsi, [rel x5_hash]
+    lea rdx, [rbx + X5_SIG]
+    call ecdsa_verify
+    jmp .done
+.fail:
+    stc
+.done:
+    lea rsp, [rsp + 8]
+    pop r12
+    pop rbx
     ret
 
 ; name: x509_host_ok
@@ -508,3 +586,10 @@ x5_oid_p256   db 10, 0x06, 8, 0x2a, 0x86, 0x48, 0xce, 0x3d, 3, 1, 7
 x5_oid_sha256 db 10, 0x06, 8, 0x2a, 0x86, 0x48, 0xce, 0x3d, 4, 3, 2
 x5_oid_sha384 db 10, 0x06, 8, 0x2a, 0x86, 0x48, 0xce, 0x3d, 4, 3, 3
 x5_oid_san    db 5, 0x06, 3, 0x55, 0x1d, 0x11
+x5_oid_bc     db 5, 0x06, 3, 0x55, 0x1d, 0x13
+
+section .bss
+alignb 8
+x5_ctx        resb SHA_CTX_SIZE
+x5_hash       resb 32
+section .text
