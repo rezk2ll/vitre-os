@@ -38,7 +38,7 @@ shell_run:
 ; out:  zero-terminated line in the buffer, rax = length; the line is echoed.
 ;       Backspace erases, Ctrl+C drops the line, Ctrl+L clears the screen;
 ;       PgUp, PgDn and the wheel scroll back through earlier output. Up and
-;       Down bring back earlier lines, Tab completes a command name.
+;       Down bring back earlier lines, Tab completes a command or file name.
 ; clobbers: caller-saved
 shell_readline:
     push rbx
@@ -231,8 +231,9 @@ shell_hist_slot:
 
 ; name: shell_complete
 ; in:   rdi = line buffer, esi = its length
-; out:  a lone matching command name finished on the line and screen, or
-;       every match listed and the line printed again; rax = the new length
+; out:  the last word finished on the line and screen if one name matches
+;       it, or every match listed and the line printed again; rax = the new
+;       length. The first word completes to a command, a later one to a file
 ; clobbers: caller-saved
 shell_complete:
     push rbx
@@ -243,39 +244,43 @@ shell_complete:
     mov rbx, rdi
     mov r12d, esi
     mov byte [rbx + r12], 0
+    xor r15d, r15d                  ; start of the last word
     xor ecx, ecx
-.space:                             ; only the command word completes
+.space:
     cmp ecx, r12d
     jae .scan
-    cmp byte [rbx + rcx], ' '
-    je .done
     inc ecx
+    cmp byte [rbx + rcx - 1], ' '
+    jne .space
+    mov r15d, ecx
     jmp .space
 .scan:
     xor r14d, r14d                  ; matches
-    lea r15, [rel shell_commands]
+    mov edi, r15d
+    call shell_cpl_rewind
 .entry:
-    cmp qword [r15], 0
-    je .counted
-    lea rsi, [r15 + 8]
+    call shell_cpl_next
+    test rax, rax
+    jz .counted
+    mov rsi, rax
     call .prefix
-    jne .skip
+    jne .entry
     inc r14d
-    lea r13, [r15 + 8]
-.skip:
-    mov rdi, r15
-    call shell_next_command
-    mov r15, rax
+    mov r13, rsi
     jmp .entry
 .counted:
     test r14d, r14d
     jz .done
     cmp r14d, 1
     ja .list
-.finish:                            ; the rest of the lone name, then a space
-    movzx edi, byte [r13 + r12]
+.finish:                            ; the rest of the lone name
+    mov eax, r12d
+    sub eax, r15d
+    movzx edi, byte [r13 + rax]
     test edi, edi
     jnz .append
+    test r15d, r15d
+    jnz .done                       ; a command name is followed by a space
     mov edi, ' '
 .append:
     cmp r12d, SHELL_LINE_MAX - 1
@@ -294,23 +299,21 @@ shell_complete:
 .list:
     mov edi, 10
     call kputc
-    lea r15, [rel shell_commands]
+    mov edi, r15d
+    call shell_cpl_rewind
 .list_entry:
-    cmp qword [r15], 0
-    je .listed
-    lea rsi, [r15 + 8]
+    call shell_cpl_next
+    test rax, rax
+    jz .listed
+    mov rsi, rax
     call .prefix
-    jne .list_next
-    lea rdi, [r15 + 8]
+    jne .list_entry
+    mov rdi, rsi
     call kputs
     mov edi, ' '
     call kputc
     mov edi, ' '
     call kputc
-.list_next:
-    mov rdi, r15
-    call shell_next_command
-    mov r15, rax
     jmp .list_entry
 .listed:
     mov edi, 10
@@ -327,17 +330,66 @@ shell_complete:
     pop r12
     pop rbx
     ret
-.prefix:                            ; ZF=1 if the line is a prefix of name rsi
+.prefix:                            ; ZF=1 if the last word is a prefix of name rsi
+    lea rdx, [rbx + r15]
+    mov r8d, r12d
+    sub r8d, r15d
     xor ecx, ecx
 .prefix_char:
-    cmp ecx, r12d
+    cmp ecx, r8d
     jae .prefix_ret                 ; ZF=1 from the cmp
-    mov al, [rbx + rcx]
+    mov al, [rdx + rcx]
     cmp al, [rsi + rcx]
     jne .prefix_ret
     inc ecx
     jmp .prefix_char
 .prefix_ret:
+    ret
+
+; name: shell_cpl_rewind
+; in:   edi = start of the word to complete, 0 for the command word
+; out:  shell_cpl_next starts again from the first command or file
+; clobbers: rax
+shell_cpl_rewind:
+    mov byte [rel shell_cpl_files], 0
+    lea rax, [rel shell_commands]
+    test edi, edi
+    jz .set
+    mov byte [rel shell_cpl_files], 1
+    xor eax, eax                    ; file index
+.set:
+    mov [rel shell_cpl_it], rax
+    ret
+
+; name: shell_cpl_next
+; in:   none
+; out:  rax = the next command or file name, 0 after the last
+; clobbers: rax, rcx, rdi
+shell_cpl_next:
+    cmp byte [rel shell_cpl_files], 0
+    jne .file
+    mov rdi, [rel shell_cpl_it]
+    cmp qword [rdi], 0
+    je .end
+    push rdi
+    call shell_next_command
+    mov [rel shell_cpl_it], rax
+    pop rax
+    add rax, 8                      ; the name follows the handler
+    ret
+.file:
+    mov rax, [rel src_area]
+    test rax, rax
+    jz .end
+    mov ecx, [rel shell_cpl_it]
+    cmp ecx, [rax + SRC_HDR_COUNT]
+    jae .end
+    inc dword [rel shell_cpl_it]
+    imul ecx, ecx, SRC_DIR_ENTRY
+    lea rax, [rax + rcx + SRC_DIR]  ; an entry starts with its name
+    ret
+.end:
+    xor eax, eax
     ret
 
 ; name: shell_execute
@@ -709,4 +761,7 @@ shell_history resb SHELL_HISTORY * SHELL_LINE_MAX
 alignb 4
 shell_hist_next  resd 1             ; slot number the next line goes to
 shell_hist_count resd 1
+alignb 8
+shell_cpl_it     resq 1             ; command record or file index
+shell_cpl_files  resb 1             ; 1 while completing a file name
 section .text

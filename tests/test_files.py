@@ -46,6 +46,23 @@ def test_ls_cat_edit_rm():
             raise TestFailure(f"forge: {out!r}")
 
 
+def test_tab_completes_file_names():
+    with Vm("files_tab") as vm:
+        pos = vm.wait_for(SHELL_READY).end()
+        vm.sendkeys("cat wel")
+        vm.press("tab")
+        vm.sendkeys("\n")
+        pos = vm.wait_for(r"cat welcome\.txt\r\nWelcome to Vitre\.", start=pos).end()
+        vm.sendkeys("run ")
+        vm.press("tab")
+        pos = vm.wait_for(r"kernel/report\.asm  guess\.asm  hello\.asm  snake\.asm"
+                          r"  welcome\.txt  \r\nvitre> run ", start=pos).end()
+        vm.sendkeys("sn")
+        vm.press("tab")
+        vm.sendkeys(" x")
+        vm.wait_for(r"snake\.asm x", start=pos)
+
+
 def test_saved_file_survives_reboot():
     disk = fresh_disk()
     try:
