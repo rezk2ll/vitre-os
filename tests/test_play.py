@@ -1,3 +1,4 @@
+import re
 import socket
 import threading
 
@@ -19,10 +20,11 @@ def clip():
             for x in range(k, k + 8):
                 rgb[(y * W + x) * 3:(y * W + x) * 3 + 3] = b"\xff\xff\xff"
         frames.append(bytes(rgb))
-    return encode(frames, W, H, fps=10)
+    return encode(frames, W, H, fps=10, chunk=1024)
 
 
-def serve(files, seen):
+def serve_ranges(files, seen):
+    """HTTP/1.0 with Range: bytes=a-b, as a real web server answers it."""
     sock = socket.create_server(("127.0.0.1", 0))
 
     def loop():
@@ -36,26 +38,36 @@ def serve(files, seen):
                         break
                     data += part
                 path = data.split(b" ")[1].decode()
-                seen.append(path)
+                m = re.search(rb"\r\nRange: bytes=(\d+)-(\d+)", data)
+                seen.append((path, m and (int(m.group(1)), int(m.group(2)))))
                 body = files.get(path)
                 if body is None:
                     conn.sendall(b"HTTP/1.0 404 Not Found\r\n\r\nmissing")
-                else:
+                elif not m:
                     conn.sendall(b"HTTP/1.0 200 OK\r\n\r\n" + body)
+                elif int(m.group(1)) >= len(body):
+                    conn.sendall(b"HTTP/1.0 416 Range Not Satisfiable\r\n\r\n")
+                else:
+                    a, b = int(m.group(1)), min(int(m.group(2)), len(body) - 1)
+                    conn.sendall(b"HTTP/1.0 206 Partial Content\r\nContent-Range: bytes "
+                                 + f"{a}-{b}/{len(body)}".encode() + b"\r\n\r\n" + body[a:b + 1])
 
     threading.Thread(target=loop, daemon=True).start()
     return sock.getsockname()[1]
 
 
-def test_play_shows_a_video():
+def test_play_streams_a_video_in_chunks():
     video, seen = clip(), []
-    port = serve({"/clip.viv": video}, seen)
+    port = serve_ranges({"/clip.viv": video}, seen)
     with Vm("play", net=True) as vm:
         pos = vm.wait_for(SHELL_READY).end()
         vm.sendkeys(f"play http://10.0.2.2:{port}/clip.viv\n")
         wait_pixel(vm, 512, 384, RED)
         wait_pixel(vm, 512, 384, GREEN)
         pos = vm.wait_for(r"\[play\] 40 frames\r\n", start=pos, timeout=30).end()
+        chunks = [r for p, r in seen if p == "/clip.viv"]
+        if chunks[:2] != [(0, 199999), (1024, 2047)] or len(chunks) < len(video) // 1024:
+            raise TestFailure(f"ranges asked for: {chunks}")
 
         vm.sendkeys(f"play http://10.0.2.2:{port}/clip.viv\n")
         wait_pixel(vm, 512, 384, RED)

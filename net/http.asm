@@ -9,7 +9,9 @@ HTTP_IDLE_MS  equ 10000
 ; name: http_get
 ; in:   rdi = "http://host:port/path", with the scheme, port and path
 ;       optional; interrupts on
-; out:  the whole response in tcp_rx, tcp_rx_len bytes; CF=1 if the host
+; out:  the whole response in tcp_rx, tcp_rx_len bytes, or only the bytes
+;       http_range_from to http_range_to when http_range_to is set (it is
+;       cleared); CF=1 if the host
 ;       has no address, refused, the send failed, or the URL is too long
 ; clobbers: caller-saved
 http_get:
@@ -89,6 +91,11 @@ http_get:
     call http_append
     lea rsi, [rel http_host]
     call http_append
+    jc .fail
+    cmp qword [rel http_range_to], 0
+    je .tail
+    call http_append_range
+.tail:
     lea rsi, [rel http_tail]
     call http_append
     jc .fail
@@ -149,6 +156,7 @@ http_get:
 .fail:
     stc
 .done:
+    mov qword [rel http_range_to], 0  ; the next request asks for everything
     pop r13
     pop r12
     pop rbx
@@ -173,6 +181,34 @@ http_append:
     stc
 .done:
     ret
+
+; name: http_append_range
+; in:   rdi = write position, rdx = end of the buffer; http_range_from and
+;       http_range_to set
+; out:  a Range header line appended, rdi past it; CF=1 if it did not fit
+; clobbers: rax, rcx, rsi
+http_append_range:
+    push rdx
+    push rdi
+    lea rdi, [rel http_range_text]
+    lea rsi, [rel http_range_line]
+.copy:
+    lodsb
+    stosb
+    test al, al
+    jnz .copy
+    dec rdi
+    mov rsi, [rel http_range_from]
+    call str_put_dec
+    mov byte [rdi], '-'
+    inc rdi
+    mov rsi, [rel http_range_to]
+    call str_put_dec
+    pop rdi
+    pop rdx
+    lea rsi, [rel http_range_text]
+    clc
+    jmp http_append
 
 ; name: http_body
 ; in:   a response in tcp_rx
@@ -328,6 +364,7 @@ http_scheme_tls db "https://"
 http_get_line   db "GET ", 0
 http_root       db "/", 0
 http_host_line  db " HTTP/1.0", 13, 10, "Host: ", 0
+http_range_line db 13, 10, "Range: bytes=", 0
 http_tail       db 13, 10, "User-Agent: vitre", 13, 10, "Connection: close", 13, 10, 13, 10, 0
 http_msg_size   db 10, "[http] ", 0
 http_msg_bytes  db " bytes", 10, 0
@@ -337,6 +374,10 @@ http_msg_failed db "[http] no response", 10, 0
 http_loc_name   db "location:"
 
 section .bss
+alignb 8
+http_range_from resq 1              ; with http_range_to, the bytes the next
+http_range_to   resq 1              ; http_get asks for; 0 to 0 for all
+http_range_text resb 64
 http_port    resd 1
 http_tls     resb 1                 ; the last URL was https: not verified
 http_host    resb HTTP_HOST_MAX

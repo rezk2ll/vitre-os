@@ -1,6 +1,6 @@
-; Video player: `play <url>` fetches a .viv video (see tools/vivenc.asm)
-; over HTTP or HTTPS and plays its first chunk. The picture is scaled up by
-; a whole number to fill the screen. q or Esc stop it.
+; Video player: `play <url>` streams a .viv video (see tools/vivenc.asm)
+; over HTTP or HTTPS, one range request a chunk. The picture is scaled up
+; by a whole number to fill the screen. q or Esc stop it.
 
 PLAY_CHUNK_MAX   equ 200000         ; with its headers, fits tcp_rx
 PLAY_CHUNK_PAGES equ (PLAY_CHUNK_MAX + 4095) / 4096
@@ -44,12 +44,14 @@ cmd_play:
     mov [rel play_row], rax
     mov dword [rel play_chunk], PLAY_CHUNK_MAX
     lea rbx, [rel play_msg_bad]
+    xor r12d, r12d                  ; the chunk playing
+    xor edi, edi
     call play_fetch
     jc .free
     call play_header
     jc .free
     call play_setup
-    mov r13d, PLAY_HEADER           ; the next frame
+    mov r13d, PLAY_HEADER           ; the next frame in the chunk
     mov r14, [rel timer_ticks]      ; when frame 0 was due
     xor r15d, r15d                  ; frames shown
 .frame:
@@ -63,15 +65,15 @@ cmd_play:
     mov ecx, [rel play_len]
     lea eax, [r13 + 4]
     cmp eax, ecx
-    ja .stop
+    ja .chunk
     mov rsi, [rel play_buf]
     add rsi, r13
     mov edx, [rsi]
     test edx, edx
-    jz .stop
+    jz .chunk
     lea rax, [r13 + 4 + rdx]
     cmp rax, rcx
-    ja .stop
+    ja .chunk
     mov r13d, eax
     add rsi, 4
     call play_decode
@@ -88,6 +90,13 @@ cmd_play:
 .draw:
     call play_draw
     inc r15d
+    jmp .frame
+.chunk:
+    inc r12d
+    mov edi, r12d
+    call play_fetch
+    jc .stop                        ; past the end of the video
+    xor r13d, r13d
     jmp .frame
 .stop:
     call shell_clear_screen
@@ -111,22 +120,35 @@ cmd_play:
     ret
 
 ; name: play_fetch
-; in:   play_url
-; out:  the start of the video in play_buf, play_len bytes; CF=1 if the
-;       fetch failed or the server said no
+; in:   edi = chunk number, play_url
+; out:  the chunk in play_buf, play_len bytes; CF=1 if there is no such
+;       chunk or the fetch failed
 ; clobbers: caller-saved
 play_fetch:
-    sub rsp, 8
+    push rbx
+    mov ebx, edi
+    mov eax, [rel play_chunk]
+    imul rax, rbx
+    mov [rel http_range_from], rax
+    mov ecx, [rel play_chunk]
+    lea rax, [rax + rcx - 1]
+    mov [rel http_range_to], rax
     mov rdi, [rel play_url]
     call http_get
     jc .ret
+    cmp dword [rel tcp_rx + 8], " 206"
+    je .take
+    test ebx, ebx                   ; a server that ignores ranges sends the
+    stc                             ; whole video: only its start is used
+    jnz .ret
     cmp dword [rel tcp_rx + 8], " 200"
     stc
     jne .ret
+.take:
     call http_body
-    cmp ecx, PLAY_CHUNK_MAX
+    cmp ecx, [rel play_chunk]
     jbe .copy
-    mov ecx, PLAY_CHUNK_MAX
+    mov ecx, [rel play_chunk]
 .copy:
     mov [rel play_len], ecx
     mov rsi, rax
@@ -134,7 +156,7 @@ play_fetch:
     rep movsb
     clc
 .ret:
-    add rsp, 8
+    pop rbx
     ret
 
 ; name: play_header
