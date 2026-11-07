@@ -70,8 +70,19 @@ def test_browse_shows_and_scrolls():
         vm.wait_screen(r"line 199")
         vm.press("home")
         vm.wait_screen(r"line 000")
+        wheel(vm, "wheel-down", 2)
+        vm.wait_screen(r"Long page[^\n]*\n *line 00\d")
+        wheel(vm, "wheel-up", 2)
+        vm.wait_screen(r"Long page[^\n]*\n *Top")
         vm.sendkeys("q")
         vm.wait_for(r"\r\nvitre> ", start=pos)
+
+
+def wheel(vm, way, notches):
+    for _ in range(notches):
+        for down in (True, False):
+            vm.qmp("input-send-event",
+                   events=[{"type": "btn", "data": {"down": down, "button": way}}])
 
 
 def serve_pages(pages):

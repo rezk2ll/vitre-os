@@ -1,8 +1,9 @@
 ; Browser: `browse [url]` takes the screen and shows the page laid out to
 ; its width, headings and links in their own colours, the title above and
 ; the address below. Keys: arrows or j and k scroll a line, space, PgDn
-; and PgUp a screen, Home and End; a click on a link, or its number then
-; Enter, follows it; g types an address, b goes back, q or Esc leave.
+; and PgUp a screen, Home and End, the wheel three lines; a click on a
+; link, or its number then Enter, follows it; g types an address, b goes
+; back, q or Esc leave.
 
 BR_URL_MAX   equ 256
 BR_HISTORY   equ 16
@@ -40,11 +41,17 @@ cmd_browse:
     call kbd_poll
     jnz .got
     call mouse_click
-    jc .idle
+    jc .wheel
     call br_click
-    jc .idle
+    jc .wheel
     mov [rel br_pick], eax
     jmp .follow
+.wheel:
+    call mouse_scroll
+    test eax, eax
+    jz .idle
+    lea ebx, [rax + rax * 2]        ; three lines a notch
+    jmp .down
 .idle:
     call task_yield
     jmp .key
