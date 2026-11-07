@@ -139,3 +139,42 @@ def test_poly1305_and_aead_vectors():
         forged = bytes([sealed[0] ^ 1]) + sealed[1:]
         vm.sendkeys(f"crypto open {key.hex()} {nonce.hex()} {hx(aad)} {forged.hex()}\n", delay=0.015)
         vm.wait_for(r"crypto: bad tag", start=start, timeout=30)
+
+
+def x25519(k, u):
+    k = bytearray(k)
+    k[0] &= 248
+    k[31] = k[31] & 127 | 64
+    k, p = int.from_bytes(k, "little"), 2**255 - 19
+    x1 = int.from_bytes(u, "little") & ((1 << 255) - 1)
+    x2, z2, x3, z3 = 1, 0, x1, 1
+    for t in range(254, -1, -1):
+        if k >> t & 1:
+            x2, z2, x3, z3 = x3, z3, x2, z2
+        a, b, c, d = x2 + z2, x2 - z2, x3 + z3, x3 - z3
+        aa, bb, da, cb = a * a, b * b, d * a, c * b
+        e = aa - bb
+        x3, z3 = (da + cb) ** 2 % p, x1 * (da - cb) ** 2 % p
+        x2, z2 = aa * bb % p, e * (aa + 121665 * e) % p
+        if k >> t & 1:
+            x2, z2, x3, z3 = x3, z3, x2, z2
+    return (x2 * pow(z2, p - 2, p) % p).to_bytes(32, "little")
+
+
+def test_x25519_vectors():
+    rng = random.Random(7748)
+    alice = bytes.fromhex("77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a")
+    bob = bytes.fromhex("5dab087e624a8a4b79e17f8b83800ee66f3bb1292618b6fd1c2f8b27ff88e0eb")
+    base = (9).to_bytes(32, "little")
+    # RFC 7748 5.2 #1, the 6.1 exchange, then u at and past p and with bit 255 set
+    cases = [(bytes.fromhex("a546e36bf0527c9d3b16154b82465edd62144c0ac1fc5a18506a2244ba449ac4"),
+              bytes.fromhex("e6db6867583030db3594c1a424b15f7c726624ec26b3353b10a903a6d0ab1c4c")),
+             (alice, base), (bob, x25519(alice, base))]
+    assert x25519(*cases[0]).hex() == "c3da55379de9c6908e94ea4df28d084f32eccf03491c71f754b4075577a28552"
+    assert x25519(*cases[2]).hex() == "4a5d9d5ba4ce2de1728e3bf480350f25e07e21c947d19e3376f09b3c1e161742"
+    cases += [(rng.randbytes(32), (2**255 - 19 + n).to_bytes(32, "little")) for n in (0, 1, 18)]
+    cases += [(rng.randbytes(32), rng.randbytes(32)) for _ in range(3)]
+    with Vm("m15_x25519", cmdline=QWERTY) as vm:
+        vm.wait_for(SHELL_READY)
+        for k, u in cases:
+            check(vm, f"x25519 {k.hex()} {u.hex()}", x25519(k, u).hex())

@@ -382,7 +382,7 @@ shell_commands:
     shell_command "get", cmd_get, "fetch a page and print it raw: get http://host/path"
     shell_command "view", cmd_view, "fetch a page and print it as text: view http://host/path"
     shell_command "browse", cmd_browse, "open the browser: browse [http://host/path]"
-    shell_command "crypto", cmd_crypto, "run a primitive on hex input: crypto sha256|hmac|hkdf|chacha20|poly1305|seal|open <hex>..."
+    shell_command "crypto", cmd_crypto, "run a primitive on hex input: crypto sha256|hmac|hkdf|chacha20|poly1305|seal|open|x25519 <hex>..."
     shell_command "forge", forge_check, "reassemble the patchable modules"
     shell_command "edit", cmd_edit, "edit a module: edit <module>"
     shell_command "patch", cmd_patch, "patch a module live: patch <module>"
