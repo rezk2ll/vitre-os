@@ -57,6 +57,41 @@ fb_fill_rect:
 .done:
     ret
 
+; name: fb_blit
+; in:   rdi = x, rsi = y, rdx = width, rcx = height, r8 = pixels, rows of
+;       width dwords back to back
+; out:  the pixels copied to the screen at x, y
+; clobbers: rax, rcx, rdx, rdi, rsi, r8, r9, r10
+fb_blit:
+    pushfq
+    cli
+    lea rax, [rsp + 8]
+    call prov_rect
+    call cursor_off
+    call .body
+    call cursor_on
+    popfq
+    ret
+.body:
+    mov r9, rdx
+    mov r10, rcx
+    mov rax, [rel fb_pitch]
+    imul rsi, rax
+    lea rdx, [rsi + rdi * 4]
+    add rdx, [rel fb_base]
+    mov rsi, r8
+.row:
+    test r10, r10
+    jz .done
+    mov rdi, rdx
+    mov rcx, r9
+    rep movsd
+    add rdx, [rel fb_pitch]
+    dec r10
+    jmp .row
+.done:
+    ret
+
 ; name: fb_draw_glyph
 ; in:   rdi = x, rsi = y, edx = character, ecx = foreground, r8d = background
 ; out:  none; characters outside the font draw as '?'

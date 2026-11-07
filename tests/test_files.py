@@ -55,7 +55,7 @@ def test_tab_completes_file_names():
         pos = vm.wait_for(r"cat welcome\.txt\r\nWelcome to Vitre\.", start=pos).end()
         vm.sendkeys("run ")
         vm.press("tab")
-        pos = vm.wait_for(r"kernel/report\.asm  guess\.asm  hello\.asm  snake\.asm"
+        pos = vm.wait_for(r"kernel/report\.asm  cube\.asm  guess\.asm  hello\.asm  snake\.asm"
                           r"  welcome\.txt  \r\nvitre> run ", start=pos).end()
         vm.sendkeys("sn")
         vm.press("tab")
