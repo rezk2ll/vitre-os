@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import random
+import struct
 
 from harness import SHELL_READY, Vm
 
@@ -55,3 +56,41 @@ def test_hmac_and_hkdf_vectors():
             check(vm, f"hmac {hx(key)} {hx(msg)}", hmac.digest(key, msg, "sha256").hex())
         for salt, key, info, n in kdfs:
             check(vm, f"hkdf {hx(salt)} {hx(key)} {hx(info)} {n:02x}", hkdf(salt, key, info, n).hex())
+
+
+def chacha20(key, nonce, counter, data):
+    def qr(x, a, b, c, d):
+        for p, q, r, s in ((a, b, d, 16), (c, d, b, 12), (a, b, d, 8), (c, d, b, 7)):
+            x[p] = (x[p] + x[q]) & 0xffffffff
+            x[r] ^= x[p]
+            x[r] = (x[r] << s | x[r] >> (32 - s)) & 0xffffffff
+    out = b""
+    for i in range(0, len(data), 64):
+        state = list(struct.unpack("<16I", b"expand 32-byte k" + key
+                                   + struct.pack("<I", counter + i // 64) + nonce))
+        x = state[:]
+        for _ in range(10):
+            for q in ((0, 4, 8, 12), (1, 5, 9, 13), (2, 6, 10, 14), (3, 7, 11, 15),
+                      (0, 5, 10, 15), (1, 6, 11, 12), (2, 7, 8, 13), (3, 4, 9, 14)):
+                qr(x, *q)
+        stream = struct.pack("<16I", *((a + b) & 0xffffffff for a, b in zip(x, state)))
+        out += bytes(a ^ b for a, b in zip(data[i:i + 64], stream))
+    return out
+
+
+def test_chacha20_vectors():
+    rng = random.Random(8439)
+    sunscreen = (b"Ladies and Gentlemen of the class of '99: If I could offer you only one tip "
+                 b"for the future, sunscreen would be it.")
+    # RFC 8439 2.4.2 and A.2 #1, then random keys over block edges
+    cases = [(bytes(range(32)), bytes(7) + b"\x4a" + bytes(4), 1, sunscreen),
+             (bytes(32), bytes(12), 0, bytes(64))]
+    assert chacha20(*cases[0]).hex().startswith("6e2e359a2568f98041ba0728dd0d6981")
+    assert chacha20(*cases[1]).hex().startswith("76b8e0ada0f13d90405d6ae55386bd28")
+    cases += [(rng.randbytes(32), rng.randbytes(12), rng.randrange(256), rng.randbytes(n))
+              for n in (1, 63, 64, 65, 200)]
+    with Vm("m15_chacha20", cmdline=QWERTY) as vm:
+        vm.wait_for(SHELL_READY)
+        for key, nonce, counter, data in cases:
+            check(vm, f"chacha20 {key.hex()} {nonce.hex()} {counter:02x} {data.hex()}",
+                  chacha20(key, nonce, counter, data).hex())
