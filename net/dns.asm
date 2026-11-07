@@ -172,6 +172,19 @@ dns_resolve:
     pop rbx
     ret
 
+; name: net_resolve
+; in:   rdi = "a.b.c.d" or a host name; interrupts on
+; out:  eax = the address, network order; CF=1 if it has none
+; clobbers: caller-saved
+net_resolve:
+    push rdi
+    call net_parse_ip
+    pop rdi
+    jnc .done
+    jmp dns_resolve
+.done:
+    ret
+
 ; name: cmd_host
 ; in:   rdi = host name
 ; out:  "[dns] name is a.b.c.d", or why not

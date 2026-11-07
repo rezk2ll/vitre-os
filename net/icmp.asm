@@ -68,7 +68,7 @@ icmp_input:
     ret
 
 ; name: cmd_ping
-; in:   rdi = "a.b.c.d"
+; in:   rdi = "a.b.c.d" or a host name
 ; out:  PING_COUNT echo requests, one line per reply or timeout, then a
 ;       summary
 ; clobbers: caller-saved
@@ -80,8 +80,11 @@ cmd_ping:
     push r15
     cmp byte [rel net_ready], 0
     je .no_net
-    call net_parse_ip
-    jc .usage
+    mov rbx, rdi
+    cmp byte [rdi], 0
+    je .usage
+    call net_resolve
+    jc .unknown
     mov [rel ping_target], eax
     mov dword [rel ping_seen], 0
     xor ebx, ebx                    ; sequence
@@ -167,6 +170,14 @@ cmd_ping:
     lea rdi, [rel ping_msg_unreachable]
     call kputs
     jmp .done
+.unknown:
+    lea rdi, [rel dns_msg]
+    call kputs
+    mov rdi, rbx
+    call kputs
+    lea rdi, [rel dns_msg_unknown]
+    call kputs
+    jmp .done
 .usage:
     lea rdi, [rel ping_msg_usage]
     call kputs
@@ -192,7 +203,7 @@ ping_msg_sent        db "[ping] ", 0
 ping_msg_received    db " sent, ", 0
 ping_msg_end         db " received", 10, 0
 ping_msg_unreachable db "[ping] no route: the next hop did not answer ARP", 10, 0
-ping_msg_usage       db "usage: ping a.b.c.d", 10, 0
+ping_msg_usage       db "usage: ping a.b.c.d|name", 10, 0
 
 section .bss
 alignb 8

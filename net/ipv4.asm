@@ -111,26 +111,8 @@ ip_send:
     mov r12d, esi
     mov r13, rdx
     mov r14d, ecx
-    lea rax, [rel arp_broadcast]
-    cmp ebx, 0xffffffff
-    je .build
-    mov eax, ebx                    ; next hop: the host itself on our subnet
-    xor eax, [rel net_ip]
-    test eax, [rel net_mask]
-    jz .hop
-    mov edi, [rel net_gateway]
-.hop:
-    mov r15d, edi
-    call arp_lookup
-    jnc .build
-    pushfq
-    pop rax
-    test eax, 1 << 9                ; IF clear: called from an IRQ, cannot wait
-    jz .fail
-    mov edi, r15d
-    call arp_resolve
+    call ip_route
     jc .fail
-.build:
     mov r15, rax                    ; next hop MAC
     pushfq                          ; ip_packet is shared with the IRQ path
     cli
@@ -177,6 +159,36 @@ ip_send:
     pop r14
     pop r13
     pop r12
+    pop rbx
+    ret
+
+; name: ip_route
+; in:   edi = destination
+; out:  rax = address of the next hop's MAC; CF=1 if it is unknown. Outside
+;       an IRQ an unknown next hop is resolved first
+; clobbers: caller-saved
+ip_route:
+    push rbx
+    lea rax, [rel arp_broadcast]
+    cmp edi, 0xffffffff
+    je .done                        ; CF=0 from the equal compare
+    mov eax, edi                    ; next hop: the host itself on our subnet
+    xor eax, [rel net_ip]
+    test eax, [rel net_mask]
+    jz .hop
+    mov edi, [rel net_gateway]
+.hop:
+    mov ebx, edi
+    call arp_lookup
+    jnc .done
+    pushfq
+    pop rax
+    test eax, 1 << 9                ; IF clear: called from an IRQ, cannot wait
+    stc
+    jz .done
+    mov edi, ebx
+    call arp_resolve
+.done:
     pop rbx
     ret
 
