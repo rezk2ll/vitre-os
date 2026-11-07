@@ -168,6 +168,7 @@ selftest_pit:
 %include "lib/poly1305.asm"
 %include "lib/aead.asm"
 %include "lib/x25519.asm"
+%include "lib/mont.asm"
 %include "net/tls.asm"
 %include "apps/crypto.asm"
 %include "kernel/report.asm"

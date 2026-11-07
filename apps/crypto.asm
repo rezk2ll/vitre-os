@@ -158,6 +158,60 @@ cr_x25519:                          ; scalar, u
     mov esi, 32
     jmp cr_print_out
 
+cr_pmul:                            ; a, b: a*b mod the P-256 prime
+    lea rbx, [rel mm_p256]
+    call cr_mm_args
+    lea rdi, [rel cr_mx]
+    lea rsi, [rel cr_mx]
+    lea rdx, [rel cr_my]
+    mov rcx, rbx
+    call mm_mul
+    jmp cr_mm_out
+
+cr_ninv:                            ; a: 1/a mod the P-256 group order
+    lea rbx, [rel mm_n256]
+    call cr_mm_args
+    lea rdi, [rel cr_my]
+    lea rsi, [rel cr_mx]
+    mov rcx, rbx
+    call mm_inv
+    lea rsi, [rel cr_my]
+    lea rdi, [rel cr_mx]
+    mov ecx, 4
+    rep movsq
+    jmp cr_mm_out
+
+; name: cr_mm_args
+; in:   rbx = modulus, cr_arg holding one or two 32-byte numbers below it
+; out:  them in Montgomery form in cr_mx and cr_my
+; clobbers: rax, rcx, rdx, rsi, rdi, r8, r9, r10, r11
+cr_mm_args:
+    lea rdi, [rel cr_mx]
+    lea rsi, [rel cr_arg]
+    call num_load
+    lea rdi, [rel cr_my]
+    lea rsi, [rel cr_arg + CR_MAX]
+    call num_load
+    lea rdi, [rel cr_mx]
+    mov rsi, rdi
+    mov rcx, rbx
+    call mm_to
+    lea rdi, [rel cr_my]
+    mov rsi, rdi
+    mov rcx, rbx
+    jmp mm_to
+
+cr_mm_out:                          ; cr_mx out of Montgomery form, printed
+    lea rdi, [rel cr_mx]
+    mov rsi, rdi
+    mov rcx, rbx
+    call mm_from
+    lea rdi, [rel cr_out]
+    lea rsi, [rel cr_mx]
+    call num_store
+    mov esi, 32
+    jmp cr_print_out
+
 cr_chacha20:                        ; key, nonce, one-byte counter, data
     lea rdi, [rel cr_arg]
     movzx esi, byte [rel cr_arg + 2 * CR_MAX]
@@ -306,6 +360,8 @@ cr_table:
     dq cr_n_open, cr_open, 4
     dq cr_n_x25519, cr_x25519, 2
     dq cr_n_label, cr_label, 4
+    dq cr_n_pmul, cr_pmul, 2
+    dq cr_n_ninv, cr_ninv, 1
     dq 0
 
 cr_n_sha256   db "sha256", 0
@@ -317,11 +373,14 @@ cr_n_seal     db "seal", 0
 cr_n_open     db "open", 0
 cr_n_x25519   db "x25519", 0
 cr_n_label    db "label", 0
+cr_n_pmul     db "pmul", 0
+cr_n_ninv     db "ninv", 0
 cr_msg_bad    db "crypto: bad tag", 10, 0
 cr_msg_usage db "usage: crypto sha256 <data> | hmac <key> <data> | hkdf <salt> <key> <info> <len>", 10
              db "       | chacha20 <key> <nonce> <counter> <data> | poly1305 <key> <data>", 10
              db "       | seal|open <key> <nonce> <additional data> <data> | x25519 <scalar> <u>", 10
              db "       | label <secret> <label> <context> <len> (TLS 1.3 HKDF-Expand-Label)", 10
+             db "       | pmul <a> <b> (mod the P-256 prime) | ninv <a> (1/a mod its order)", 10
              db "       inputs in hex, - for an empty one", 10, 0
 
 section .bss
@@ -329,6 +388,8 @@ alignb 8
 cr_lens resd CR_ARGS
 cr_ctx  resb SHA_CTX_SIZE
 cr_prk  resb 32
+cr_mx   resq 4
+cr_my   resq 4
 cr_arg  resb CR_ARGS * CR_MAX
 cr_out  resb CR_MAX + 16            ; sealed data and its tag
 section .text
