@@ -1,31 +1,34 @@
-; Desktop: `desktop` takes the screen and shows a launcher, a tile per app
-; under a bar with the clock. The tile under the pointer is outlined; a
-; click on a tile, or its number, opens the app; the desktop comes back
-; when it ends. q or Esc return to the shell.
+; Desktop: `desktop` takes the screen and shows a bar with the clock and an
+; icon per app, in columns from the top left. The icon under the pointer is
+; outlined. A click opens it, and the desktop comes back when the app ends.
+; q or Esc return to the shell.
 
 DT_BAR_H    equ 24
-DT_TILE_W   equ 200
-DT_TILE_H   equ 140
-DT_GAP      equ 40
-DT_COLS     equ 4
-DT_TILES    equ 8
+DT_MARGIN   equ 16
+DT_CELL_W   equ 112
+DT_CELL_H   equ 104
+DT_ICON     equ 64                  ; the icon square, at the top of its cell
+DT_ICON_X   equ (DT_CELL_W - DT_ICON) / 2
+DT_LABEL    equ 13                  ; label characters shown under an icon
 DT_ENTRY    equ 32                  ; label, action, argument, colour, letter
+DT_APPS     equ 7
+DT_MAX      equ 64
 DT_SCALE    equ 4                   ; icon letters are the font at 4x
-DT_OUTLINE  equ 3                   ; the hovered tile's border, in pixels
+DT_OUTLINE  equ 3                   ; the hovered icon's border, in pixels
 DT_NONE     equ 0xff
 DT_BAR_BG   equ 0x000f141e
 DT_TEXT     equ 0x00eceff4
 DT_DIM      equ 0x009aa5b8
 
-%macro dt_tile 6                    ; label, length, action, argument, colour, letter
-    dq %1, %3, %4
-    dd %5
-    db %6, %2, 0, 0
+%macro dt_app 5                     ; label, action, argument, colour, letter
+    dq %1, %2, %3
+    dd %4
+    db %5, 0, 0, 0
 %endmacro
 
 ; name: cmd_desktop
 ; in:   rdi = arguments (ignored)
-; out:  the desktop ran until q, Esc or the Terminal tile; screen cleared
+; out:  the desktop ran until q, Esc or the Terminal icon; screen cleared
 ; clobbers: caller-saved
 cmd_desktop:
     push rbx
@@ -33,6 +36,7 @@ cmd_desktop:
     cmp byte [rel console_ready], 0
     je .no_screen
 .redraw:
+    call dt_build
     call dt_draw
     call mouse_click                ; forget clicks made in the app
     mov byte [rel dt_hover], DT_NONE
@@ -60,13 +64,11 @@ cmd_desktop:
     cmp eax, 'q'
     je .quit
     cmp eax, KEY_ESC
-    je .quit
-    sub eax, '1'
-    cmp eax, DT_TILES
-    jae .loop
+    jne .loop
+    jmp .quit
 .launch:
     imul eax, eax, DT_ENTRY
-    lea rbx, [rel dt_tiles]
+    lea rbx, [rel dt_items]
     add rbx, rax
     mov rax, [rbx + 8]
     test rax, rax
@@ -86,6 +88,18 @@ cmd_desktop:
     pop rbx
     ret
 
+; name: dt_build
+; in:   none
+; out:  dt_items holds the apps; dt_count set
+; clobbers: rcx, rdi, rsi
+dt_build:
+    lea rsi, [rel dt_apps]
+    lea rdi, [rel dt_items]
+    mov ecx, DT_APPS * DT_ENTRY
+    rep movsb
+    mov dword [rel dt_count], DT_APPS
+    ret
+
 ; name: dt_draw
 ; in:   none
 ; out:  the whole desktop drawn
@@ -97,23 +111,9 @@ dt_draw:
 .row:
     cmp rbx, [rel fb_height]
     jae .bar
-    mov rax, rbx
-    imul rax, rax, 0x30
-    xor edx, edx
-    div qword [rel fb_height]
-    lea r8d, [rax + 0x18]
-    shl r8d, 8
-    mov rax, rbx
-    imul rax, rax, 0x40
-    xor edx, edx
-    div qword [rel fb_height]
-    lea r8d, [r8 + rax + 0x24]
-    shl r8d, 8
-    mov rax, rbx
-    imul rax, rax, 0x60
-    xor edx, edx
-    div qword [rel fb_height]
-    lea r8d, [r8 + rax + 0x3c]
+    mov edi, ebx
+    call dt_shade
+    mov r8d, eax
     xor edi, edi
     mov rsi, rbx
     mov rdx, [rel fb_width]
@@ -135,12 +135,16 @@ dt_draw:
     mov r8d, DT_BAR_BG
     call dt_text
     xor ebx, ebx
-.tile:
+.icon:
+    cmp ebx, [rel dt_count]
+    jae .hint
     mov edi, ebx
-    call dt_tile_draw
+    call dt_icon_draw
+    mov edi, ebx
+    call dt_label_draw
     inc ebx
-    cmp ebx, DT_TILES
-    jb .tile
+    jmp .icon
+.hint:
     mov rdi, [rel fb_width]         ; the hint, centred in the bar
     sub rdi, dt_msg_hint_len * 8
     shr rdi, 1
@@ -154,63 +158,128 @@ dt_draw:
     pop rbx
     ret
 
-; name: dt_origin
-; in:   edi = tile index
-; out:  rax = its left edge, rdx = its top edge
+; name: dt_shade
+; in:   edi = screen row
+; out:  eax = the background colour of that row
 ; clobbers: rax, rcx, rdx
-dt_origin:
+dt_shade:
     mov eax, edi
+    imul eax, eax, 0x30
     xor edx, edx
-    mov ecx, DT_COLS
-    div ecx                         ; eax = row, edx = column
-    push rax
-    imul edx, edx, DT_TILE_W + DT_GAP
-    mov rax, [rel fb_width]
-    sub rax, DT_COLS * DT_TILE_W + (DT_COLS - 1) * DT_GAP
-    shr rax, 1
-    add rax, rdx
-    pop rdx
-    imul edx, edx, DT_TILE_H + DT_GAP
-    mov rcx, [rel fb_height]
-    sub rcx, 2 * DT_TILE_H + DT_GAP
-    shr rcx, 1
-    add rdx, rcx
+    div qword [rel fb_height]
+    lea ecx, [rax + 0x18]
+    shl ecx, 8
+    mov eax, edi
+    imul eax, eax, 0x40
+    xor edx, edx
+    div qword [rel fb_height]
+    lea ecx, [rcx + rax + 0x24]
+    shl ecx, 8
+    mov eax, edi
+    imul eax, eax, 0x60
+    xor edx, edx
+    div qword [rel fb_height]
+    lea eax, [rcx + rax + 0x3c]
     ret
 
-; name: dt_tile_draw
-; in:   edi = tile index
-; out:  the tile drawn: a box in its colour, its letter large, its label
+; name: dt_origin
+; in:   edi = icon index
+; out:  rax = its cell's left edge, rdx = its cell's top edge
+; clobbers: rax, rcx, rdx
+dt_origin:
+    mov rax, [rel fb_height]        ; icons fill a column, then the next
+    sub rax, DT_BAR_H + DT_MARGIN
+    xor edx, edx
+    mov ecx, DT_CELL_H
+    div rcx
+    mov ecx, eax                    ; rows in a column
+    mov eax, edi
+    xor edx, edx
+    div ecx                         ; eax = column, edx = row
+    imul eax, eax, DT_CELL_W
+    add eax, DT_MARGIN
+    imul edx, edx, DT_CELL_H
+    add edx, DT_BAR_H + DT_MARGIN
+    ret
+
+; name: dt_icon_draw
+; in:   edi = icon index
+; out:  the icon square drawn in its colour, its letter large
 ; clobbers: caller-saved
-dt_tile_draw:
+dt_icon_draw:
     push rbx
     push r12
     push r13
     imul eax, edi, DT_ENTRY
-    lea rbx, [rel dt_tiles]
+    lea rbx, [rel dt_items]
     add rbx, rax
     call dt_origin
-    mov r12, rax
+    lea r12, [rax + DT_ICON_X]
     mov r13, rdx
     mov rdi, r12
     mov rsi, r13
-    mov edx, DT_TILE_W
-    mov ecx, DT_TILE_H
+    mov edx, DT_ICON
+    mov ecx, DT_ICON
     mov r8d, [rbx + 24]
     call fb_fill_rect
-    lea rdi, [r12 + (DT_TILE_W - 8 * DT_SCALE) / 2]
-    lea rsi, [r13 + 16]
+    lea rdi, [r12 + (DT_ICON - 8 * DT_SCALE) / 2]
+    mov rsi, r13
     movzx edx, byte [rbx + 28]
     mov ecx, DT_TEXT
     call dt_big
-    movzx eax, byte [rbx + 29]      ; the label, centred at the bottom
-    lea rdi, [r12 + DT_TILE_W / 2]
-    shl eax, 2
-    sub rdi, rax
-    lea rsi, [r13 + DT_TILE_H - 28]
-    mov rdx, [rbx]
+    pop r13
+    pop r12
+    pop rbx
+    ret
+
+; name: dt_label_draw
+; in:   edi = icon index
+; out:  its label drawn under the icon, centred, cut to DT_LABEL characters
+; clobbers: caller-saved
+dt_label_draw:
+    push rbx
+    push r12
+    push r13
+    push r14
+    push r15
+    imul eax, edi, DT_ENTRY
+    lea rbx, [rel dt_items]
+    mov rbx, [rbx + rax]
+    call dt_origin
+    mov r12, rax
+    lea r13, [rdx + DT_ICON + 8]
+    xor r14d, r14d                  ; characters shown
+.length:
+    cmp r14d, DT_LABEL
+    jae .measured
+    cmp byte [rbx + r14], 0
+    je .measured
+    inc r14d
+    jmp .length
+.measured:
+    lea eax, [r14 * 4]              ; centre: half of 8 pixels a character
+    lea r12, [r12 + DT_CELL_W / 2]
+    sub r12, rax
+    mov edi, r13d
+    add edi, 8
+    call dt_shade
+    mov r15d, eax
+.char:
+    test r14d, r14d
+    jz .done
+    mov rdi, r12
+    mov rsi, r13
+    movzx edx, byte [rbx]
     mov ecx, DT_TEXT
-    mov r8d, [rbx + 24]
-    call dt_text
+    mov r8d, r15d
+    call fb_draw_glyph
+    add r12, 8
+    inc rbx
+    dec r14d
+    jmp .char
+.done:
+    pop r15
+    pop r14
     pop r13
     pop r12
     pop rbx
@@ -332,33 +401,35 @@ dt_clock:
 
 ; name: dt_hit
 ; in:   mouse_x, mouse_y
-; out:  eax = the tile under the pointer; CF=1 if none
+; out:  eax = the icon whose cell is under the pointer; CF=1 if none
 ; clobbers: rax, rcx, rdx, rdi
 dt_hit:
     xor edi, edi
-.tile:
+.icon:
+    cmp edi, [rel dt_count]
+    jae .none
     call dt_origin
     mov ecx, [rel mouse_x]
     sub rcx, rax
-    cmp rcx, DT_TILE_W              ; unsigned: left of it wraps around
+    cmp rcx, DT_CELL_W              ; unsigned: left of it wraps around
     jae .next
     mov ecx, [rel mouse_y]
     sub rcx, rdx
-    cmp rcx, DT_TILE_H
+    cmp rcx, DT_CELL_H
     jae .next
     mov eax, edi
     clc
     ret
 .next:
     inc edi
-    cmp edi, DT_TILES
-    jb .tile
+    jmp .icon
+.none:
     stc
     ret
 
 ; name: dt_hover_update
 ; in:   none
-; out:  the tile under the pointer outlined, the one before drawn plain
+; out:  the icon under the pointer outlined, the one before drawn plain
 ; clobbers: caller-saved
 dt_hover_update:
     push rbx
@@ -375,7 +446,7 @@ dt_hover_update:
     mov [rel dt_hover], bl
     cmp edi, DT_NONE
     je .outline
-    call dt_tile_draw
+    call dt_icon_draw
 .outline:
     cmp ebx, DT_NONE
     je .ret
@@ -386,38 +457,38 @@ dt_hover_update:
     ret
 
 ; name: dt_outline
-; in:   edi = tile index
-; out:  a light border drawn just inside the tile
+; in:   edi = icon index
+; out:  a light border drawn just inside the icon square
 ; clobbers: caller-saved
 dt_outline:
     push r12
     push r13
     sub rsp, 8
     call dt_origin
-    mov r12, rax
+    lea r12, [rax + DT_ICON_X]
     mov r13, rdx
     mov rdi, r12                    ; top
     mov rsi, r13
-    mov edx, DT_TILE_W
+    mov edx, DT_ICON
     mov ecx, DT_OUTLINE
     mov r8d, DT_TEXT
     call fb_fill_rect
     mov rdi, r12                    ; bottom
-    lea rsi, [r13 + DT_TILE_H - DT_OUTLINE]
-    mov edx, DT_TILE_W
+    lea rsi, [r13 + DT_ICON - DT_OUTLINE]
+    mov edx, DT_ICON
     mov ecx, DT_OUTLINE
     mov r8d, DT_TEXT
     call fb_fill_rect
     mov rdi, r12                    ; left
     mov rsi, r13
     mov edx, DT_OUTLINE
-    mov ecx, DT_TILE_H
+    mov ecx, DT_ICON
     mov r8d, DT_TEXT
     call fb_fill_rect
-    lea rdi, [r12 + DT_TILE_W - DT_OUTLINE]
+    lea rdi, [r12 + DT_ICON - DT_OUTLINE]
     mov rsi, r13                    ; right
     mov edx, DT_OUTLINE
-    mov ecx, DT_TILE_H
+    mov ecx, DT_ICON
     mov r8d, DT_TEXT
     call fb_fill_rect
     add rsp, 8
@@ -426,34 +497,35 @@ dt_outline:
     ret
 
 align 8
-dt_tiles:
-    dt_tile dt_l_term, 8, 0, 0, 0x002e3440, '>'
-    dt_tile dt_l_web, 7, cmd_browse, dt_empty, 0x005e81ac, 'W'
-    dt_tile dt_l_glass, 5, cmd_glass, dt_empty, 0x00b48ead, 'G'
-    dt_tile dt_l_files, 5, cmd_files, dt_empty, 0x00a3be8c, 'F'
-    dt_tile dt_l_top, 7, cmd_top, dt_empty, 0x0088c0d0, 'M'
-    dt_tile dt_l_snake, 5, cmd_run, dt_snake_path, 0x00ebcb8b, 'S'
-    dt_tile dt_l_reboot, 6, cmd_reboot, 0, 0x00d08770, 'R'
-    dt_tile dt_l_off, 9, cmd_shutdown, 0, 0x00bf616a, 'O'
+dt_apps:
+    dt_app dt_l_term, 0, 0, 0x002e3440, '>'
+    dt_app dt_l_web, cmd_browse, dt_empty, 0x005e81ac, 'W'
+    dt_app dt_l_glass, cmd_glass, dt_empty, 0x00b48ead, 'G'
+    dt_app dt_l_files, cmd_files, dt_empty, 0x00a3be8c, 'F'
+    dt_app dt_l_top, cmd_top, dt_empty, 0x0088c0d0, 'M'
+    dt_app dt_l_reboot, cmd_reboot, 0, 0x00d08770, 'R'
+    dt_app dt_l_off, cmd_shutdown, 0, 0x00bf616a, 'O'
 
 dt_l_term        db "Terminal", 0
 dt_l_web         db "Browser", 0
 dt_l_glass       db "Glass", 0
 dt_l_files       db "Files", 0
 dt_l_top         db "Monitor", 0
-dt_l_snake       db "Snake", 0
 dt_l_reboot      db "Reboot", 0
 dt_l_off         db "Shut down", 0
 dt_msg_name      db "Vitre", 0
-dt_msg_hint      db "click a tile or press 1 to 8; q goes back to the shell"
+dt_msg_hint      db "click an icon to open it; q goes back to the shell"
 dt_msg_hint_len  equ $ - dt_msg_hint
                  db 0
 dt_clock_layout  db "####-##-## ##:##", 0
 dt_clock_len     equ $ - dt_clock_layout - 1
-dt_snake_path    db "snake.asm", 0
 
 section .bss
 dt_empty      resb 1
-dt_hover      resb 1                ; the outlined tile, DT_NONE for none
+dt_hover      resb 1                ; the outlined icon, DT_NONE for none
 dt_clock_text resb 32
+alignb 8
+dt_count      resd 1
+alignb 8
+dt_items      resb DT_MAX * DT_ENTRY
 section .text
