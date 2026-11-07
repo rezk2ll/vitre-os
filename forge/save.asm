@@ -74,8 +74,8 @@ patch_boot:
 .entry:
     test r12d, r12d
     jz .done
-    cmp dword [rbx + SRC_DIR_FLAGS], 0
-    je .next
+    test dword [rbx + SRC_DIR_FLAGS], SRC_EDITED
+    jz .next
     mov rdi, rbx
     call patch_apply
 .next:

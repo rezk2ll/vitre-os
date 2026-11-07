@@ -1,0 +1,5 @@
+Welcome to Vitre.
+
+These files live on the disk next to the kernel's own source.
+ls lists them, cat prints one, edit opens or creates one, rm deletes one.
+save writes every change to the disk, so it is there after a reboot.
