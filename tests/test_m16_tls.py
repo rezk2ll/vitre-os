@@ -60,6 +60,26 @@ def test_get_over_https():
             r"sealed end\s+\[http\] over TLS, certificate NOT verified, 7022 bytes")
 
 
+def test_browse_https_keeps_the_scheme():
+    pages = {b"/": b"<title>Safe</title><a href=next>n</a>", b"/next": b"<title>Next</title>"}
+
+    def answer(tls):
+        request = b""
+        while b"\r\n\r\n" not in request:
+            request += tls.recv(1024)
+        tls.sendall(b"HTTP/1.0 200 OK\r\n\r\n" + pages[request.split()[1]])
+
+    port = serve_tls(answer)
+    with Vm("m16_browse", net=True) as vm:
+        vm.wait_for(SHELL_READY)
+        vm.sendkeys("browse\n")
+        vm.wait_screen(r"Vitre browser")
+        vm.sendkeys(f"ghttps://10.0.2.2:{port}/\n")
+        vm.wait_screen(r"^ Safe .*certificate UNVERIFIED")
+        vm.sendkeys("1\n")
+        vm.wait_screen(r"^ Next[\s\S]*https://10\.0\.2\.2:\d+/next")
+
+
 def test_tls_refuses_a_plain_server():
     port = serve_once(b"HTTP/1.0 200 OK\r\n\r\nnot tls")
     with Vm("m16_plain", net=True) as vm:

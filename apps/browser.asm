@@ -7,6 +7,7 @@
 BR_URL_MAX   equ 256
 BR_HISTORY   equ 16
 BR_HINT_COLS equ 48
+BR_WARN      equ 0x00bf616a
 
 ; name: cmd_browse
 ; in:   rdi = URL
@@ -435,6 +436,19 @@ br_render:
     lea rdx, [rel br_url]
 .title:
     call gl_bar
+    lea rdx, [rel br_url]
+    call br_after_scheme
+    sub rax, rdx
+    cmp eax, 8                      ; past "https://"
+    jne .page
+    mov rdi, [rel kernel_console + CON_COLS]
+    sub edi, br_msg_tls_end - br_msg_tls
+    xor esi, esi
+    lea rdx, [rel br_msg_tls]
+    mov ecx, BR_WARN
+    mov r8d, GL_TITLE_BG
+    call gl_text
+.page:
     mov rbx, [rel kernel_console + CON_ROWS]
     sub ebx, 2                      ; ebx = page rows
     xor r12d, r12d                  ; r12 = page row
@@ -530,6 +544,8 @@ br_msg_failed     db "<p>This page did not load."
 br_msg_failed_len equ $ - br_msg_failed
 br_msg_no_screen  db "[browse] needs the screen", 10, 0
 br_msg_keys       db "number+Enter link  g address  b back  q quit", 0
+br_msg_tls        db "TLS, certificate UNVERIFIED "
+br_msg_tls_end    db 0
 br_msg_link       db "Enter follows link ", 0
 br_msg_go         db "go to:", 0
 br_cursor         db "_", 0
