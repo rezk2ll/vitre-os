@@ -14,6 +14,38 @@ def run(vm, command, start):
     return m.group(1), m.end()
 
 
+def edit_digits_to_letters(vm, pos):
+    """In the editor, make kput_dec print 'A'-based digits, then store."""
+    vm.sendkeys("edit kernel/report.asm\n")
+    pos = vm.wait_for(r"\[edit\] kernel/report.asm: opened", start=pos).end()
+    vm.ctrl("f")
+    vm.sendkeys("'0'\n")
+    for _ in range(3):
+        vm.press("delete")
+    vm.sendkeys("'A'")
+    vm.ctrl("s")
+    pos = vm.wait_for(r"\[edit\] kernel/report.asm: stored \d+ bytes", start=pos).end()
+    vm.wait_screen(r"stored, patch it to run it")
+    vm.ctrl("q")
+    return vm.wait_for(PROMPT, start=pos).end()
+
+
+def test_edit_and_patch_changes_behavior():
+    with Vm("m9_edit") as vm:
+        pos = vm.wait_for(SHELL_READY).end()
+        pos = edit_digits_to_letters(vm, pos)
+        out, pos = run(vm, "patch kernel/report.asm", pos)
+        if "4 functions" not in out:
+            raise TestFailure(f"patch: {out!r}")
+        out, pos = run(vm, "mem", pos)
+        if not re.search(r"pages free [A-J]+ of [A-J]+", out):
+            raise TestFailure(f"mem did not change: {out!r}")
+        out, pos = run(vm, "rollback", pos)
+        out, pos = run(vm, "mem", pos)
+        if not re.search(r"pages free \d+ of \d+", out):
+            raise TestFailure(f"mem after rollback: {out!r}")
+
+
 def test_patch_and_rollback():
     with Vm("m9_patch") as vm:
         pos = vm.wait_for(SHELL_READY).end()
