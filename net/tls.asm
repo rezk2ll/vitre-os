@@ -24,6 +24,7 @@ tls_handshake:
     mov [rel tls_hs_len], eax
     mov [rel tls_hs_pos], eax
     mov [rel tls_rd_on], al
+    mov [rel tls_proved], al
     push rdi
     lea rdi, [rel tls_ctx]
     call sha256_init
@@ -47,6 +48,23 @@ tls_handshake:
     inc qword [rsp]
     cmp al, 20                      ; Finished
     je .finished
+    push rsi
+    push rcx
+    cmp al, 11
+    je .cert
+    cmp al, 15
+    je .proof
+    clc
+    jmp .checked
+.cert:
+    call tls_cert
+    jmp .checked
+.proof:
+    call tls_cert_verify            ; over the transcript before it
+.checked:
+    pop rcx
+    pop rsi
+    jc .done
     call tls_hs_add
     jmp .msg
 .finished:
@@ -147,6 +165,99 @@ tls_finished:
     lea rdi, [rel tls_wr]
     lea rsi, [rel tls_c_ap]
     call tls_keys
+    clc
+    jmp .done
+.fail:
+    stc
+.done:
+    lea rsp, [rsp + 8]
+    pop r12
+    pop rbx
+    ret
+
+; name: tls_cert
+; in:   rsi = the Certificate message, ecx = its length
+; out:  it kept in tls_certs, its first certificate parsed into tls_leaf
+;       as far as it reads; CF=1 if the message itself is malformed
+; clobbers: caller-saved
+tls_cert:
+    mov [rel tls_certs_len], ecx
+    lea rdi, [rel tls_certs]
+    rep movsb
+    mov byte [rel tls_leaf + X5_KEYOK], 0
+    lea rsi, [rel tls_certs]
+    mov edx, [rel tls_certs_len]
+    cmp edx, 4 + 1 + 3 + 3
+    jb .fail
+    cmp byte [rsi + 4], 0           ; no request context
+    jne .fail
+    movzx ecx, byte [rsi + 8]
+    shl ecx, 16
+    movzx eax, word [rsi + 9]
+    xchg al, ah
+    or ecx, eax
+    lea eax, [rcx + 11]
+    cmp eax, edx
+    ja .fail
+    add rsi, 11
+    lea rdi, [rel tls_leaf]
+    call x509_parse                 ; a key it cannot read is not an error
+    clc
+    ret
+.fail:
+    stc
+    ret
+
+; name: tls_cert_verify
+; in:   rsi = the CertificateVerify message, ecx = its length, tls_ctx
+;       up to the message before it
+; out:  tls_proved = 1 if it is an ECDSA P-256 signature by tls_leaf's key
+;       over the transcript; CF=1 if it is one but does not verify
+; clobbers: caller-saved
+tls_cert_verify:
+    push rbx
+    push r12
+    sub rsp, 8
+    mov byte [rel tls_proved], 0
+    mov rbx, rsi
+    lea r12, [rsi + rcx]
+    cmp ecx, 8
+    jb .fail
+    cmp word [rbx + 4], 0x0304      ; ecdsa_secp256r1_sha256
+    jne .skip
+    cmp byte [rel tls_leaf + X5_KEYOK], 0
+    je .skip
+    lea rsi, [rbx + 8]
+    mov rdx, r12
+    mov r8b, 0x30
+    call der_expect
+    jc .done
+    mov rdx, rdi
+    lea rdi, [rel tls_sig]
+    call x5_int
+    jc .done
+    lea rdi, [rel tls_sig + 32]
+    call x5_int
+    jc .done
+    call tls_transcript
+    lea rdi, [rel tls_tmpctx]
+    call sha256_init
+    lea rdi, [rel tls_tmpctx]
+    lea rsi, [rel tls_cv_head]
+    mov edx, tls_cv_end - tls_cv_head
+    call sha256_update
+    lea rdi, [rel tls_tmpctx]
+    lea rsi, [rel tls_hash]
+    mov edx, 32
+    call sha256_update
+    call tls_hash_tmp
+    lea rdi, [rel tls_leaf + X5_KEY]
+    lea rsi, [rel tls_hash]
+    lea rdx, [rel tls_sig]
+    call ecdsa_verify
+    jc .done
+    mov byte [rel tls_proved], 1
+.skip:
     clc
     jmp .done
 .fail:
@@ -734,6 +845,9 @@ cmd_tls:
     popf
     jc .failed
     lea rdi, [rel tls_msg_ok]
+    cmp byte [rel tls_proved], 0
+    je .print
+    lea rdi, [rel tls_msg_proved]
     jmp .print
 .failed:
     lea rdi, [rel tls_msg_failed]
@@ -843,6 +957,10 @@ tls_l_cap      db "c ap traffic", 0
 tls_l_sap      db "s ap traffic", 0
 tls_hs_order   db 8, 11, 15, 20     ; extensions, certificate, its proof, Finished
 tls_msg_ok     db "[tls] handshake done; the certificate is NOT verified", 10, 0
+tls_msg_proved db "[tls] handshake done; the server holds its certificate's key, the chain is NOT verified", 10, 0
+tls_cv_head    times 64 db ' '
+               db "TLS 1.3, server CertificateVerify", 0
+tls_cv_end:
 tls_msg_failed db "[tls] handshake failed", 10, 0
 tls_msg_usage  db "usage: tls <host> <port>", 10, 0
 
@@ -853,6 +971,9 @@ tls_hs_len    resd 1
 tls_hs_pos    resd 1
 tls_rd_on     resb 1
 tls_got       resb 1
+tls_proved    resb 1
+alignb 4
+tls_certs_len resd 1
 alignb 8
 tls_rd        resb TLS_BLOCK
 tls_wr        resb TLS_BLOCK
@@ -878,5 +999,8 @@ tls_tmp2      resb 32
 tls_label     resb 2 + 1 + 6 + 32 + 1 + 32
 tls_buf       resb 512
 tls_hs        resb TLS_HS_MAX
+tls_certs     resb TLS_HS_MAX
+tls_leaf      resb X5_SIZE
+tls_sig       resb 64
 tls_out       resb 5 + TLS_OUT_MAX + 1 + 16
 section .text
