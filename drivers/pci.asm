@@ -7,9 +7,14 @@ PCI_DATA   equ 0xcfc
 PCI_ENABLE equ 0x80000000
 
 PCI_ID       equ 0x00               ; vendor in the low word, device in the high
+PCI_COMMAND  equ 0x04
 PCI_CLASS    equ 0x08               ; class, subclass, prog-if, revision from the top
 PCI_HEADER   equ 0x0c               ; bit 23: multi-function device
+PCI_BAR0     equ 0x10
 PCI_IRQ_LINE equ 0x3c
+
+PCI_CMD_MEMORY equ 2
+PCI_CMD_MASTER equ 4
 
 ; name: pci_read
 ; in:   edi = device address, esi = register offset (dword aligned)
@@ -55,6 +60,44 @@ pci_next:
 .found:
     mov eax, edi
     clc
+    ret
+
+; name: pci_write
+; in:   edi = device address, esi = register offset, edx = value
+; out:  the register written
+; clobbers: rax, rdx
+pci_write:
+    lea eax, [rdi + rsi]
+    push rdx
+    mov dx, PCI_ADDR
+    out dx, eax
+    pop rax
+    mov dx, PCI_DATA
+    out dx, eax
+    ret
+
+; name: pci_find
+; in:   edi = vendor << 16 | device id, as in "8086:100e"
+; out:  eax = address of the first such device; CF=1 if there is none
+; clobbers: rax, rcx, rdx, rdi, rsi
+pci_find:
+    rol edi, 16                     ; PCI_ID holds the vendor in the low word
+    mov ecx, edi
+    mov edi, PCI_ENABLE
+.next:
+    call pci_next
+    jc .done
+    mov edi, eax
+    xor esi, esi
+    call pci_read
+    cmp eax, ecx
+    je .match
+    add edi, 0x100
+    jmp .next
+.match:
+    mov eax, edi
+    clc
+.done:
     ret
 
 ; name: cmd_lspci
