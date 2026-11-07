@@ -1,6 +1,7 @@
 import os
 import struct
 import tempfile
+import time
 
 from harness import SHELL_READY, TestFailure, Vm
 
@@ -50,6 +51,23 @@ def test_beep_plays_a_tone():
     rate, hz = pitch(wav)
     if not 850 < hz < 920:                  # a half period is a whole number of frames
         raise TestFailure(f"heard {hz:.0f} Hz at {rate} Hz, not 880")
+
+
+def test_song_plays_and_q_stops_it():
+    wav = os.path.join(tempfile.mkdtemp(prefix="vitre-snd-"), "out.wav")
+    with Vm("song", extra=["-audiodev", f"wav,id=snd,path={wav}",
+                           "-device", "AC97,audiodev=snd"]) as vm:
+        pos = vm.wait_for(SHELL_READY).end()
+        vm.sendkeys("run song.asm\n")
+        pos = vm.wait_for(r"song: playing", start=pos).end()
+        time.sleep(2)
+        vm.sendkeys("q")
+        vm.wait_for(r"song: stopped\r\n", start=pos)
+        vm.qmp("quit")
+        vm.proc.wait(timeout=10)
+    seconds, _ = dropouts(wav)
+    if not 1 < seconds < 4:
+        raise TestFailure(f"{seconds:.2f} s of tune before q, not about 2")
 
 
 def test_beep_without_a_card():

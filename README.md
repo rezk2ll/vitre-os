@@ -82,7 +82,7 @@ A few commands to try in the shell:
 - `edit kernel/report.asm`, then `patch kernel/report.asm` and `rollback`
 - `glass` watches the newest task, or starts a demo one
 - `ls`, then `run hello.asm` or `run guess.asm`; `save` keeps your files across reboots
-- `beep` or `beep 880` plays a tone on the sound card
+- `beep` or `beep 880` plays a tone on the sound card, `run song.asm` a tune written as notes
 - `desktop` goes back to the desktop, `shutdown` powers off
 
 Up and Down bring back earlier commands and Tab completes a command name. PgUp, PgDn and the mouse wheel scroll back through earlier output.
