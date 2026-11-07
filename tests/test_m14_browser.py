@@ -4,6 +4,13 @@ import threading
 from harness import SHELL_READY, Vm
 from test_m11_net import run
 from test_m13_tcp import serve_once
+from test_mouse import move
+
+
+def click(vm):
+    for down in (True, False):
+        vm.qmp("input-send-event",
+               events=[{"type": "btn", "data": {"down": down, "button": "left"}}])
 
 
 EXAMPLE = b"""<!doctype html>
@@ -128,3 +135,35 @@ def test_browse_follows_redirects():
         vm.wait_screen(r"^ Moved here[\s\S]*:\d+/docs/new\.html ")
         vm.sendkeys(f"g10.0.2.2:{port}/loop\n")
         vm.wait_screen(r"redirects too many times[\s\S]*:\d+/loop ")
+
+
+def point(vm, col, row):
+    """Moves the pointer onto a character cell of the screen."""
+    move(vm, -5000, -5000)
+    move(vm, col * 8 + 4, row * 16 + 8)
+
+
+def test_click_follows_links():
+    port = serve_pages({
+        "/": b"<title>Home</title><p>Go to <a href=/b>the second page</a> now."
+             b" <a href=/c>c</a>",
+        "/b": b"<title>Page B</title>", "/c": b"<title>Page C</title>",
+    })
+    with Vm("m14_click", net=True) as vm:
+        vm.wait_for(SHELL_READY)
+        vm.sendkeys(f"browse 10.0.2.2:{port}/\n")
+        vm.wait_screen(r"\n Go to the second page\[1\] now\. c\[2\]")
+        point(vm, 14, 1)                # "second"
+        click(vm)
+        vm.wait_screen(r"^ Page B")
+        vm.sendkeys("b")
+        vm.wait_screen(r"^ Home")
+        point(vm, 34, 1)                # the "[2]" after c
+        click(vm)
+        vm.wait_screen(r"^ Page C")
+        vm.sendkeys("b")
+        vm.wait_screen(r"^ Home")
+        point(vm, 3, 1)                 # plain text: stays
+        click(vm)
+        vm.sendkeys("j")
+        vm.wait_screen(r"^ Home")
