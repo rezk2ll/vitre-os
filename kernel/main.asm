@@ -163,6 +163,7 @@ selftest_pit:
 %include "apps/html.asm"
 %include "apps/browser.asm"
 %include "lib/sha256.asm"
+%include "lib/hmac.asm"
 %include "apps/crypto.asm"
 %include "kernel/report.asm"
 %include "kernel/symbols.asm"
