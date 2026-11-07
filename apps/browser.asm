@@ -6,6 +6,7 @@
 
 BR_URL_MAX   equ 256
 BR_HISTORY   equ 16
+BR_REDIRECTS equ 6                  ; fetches a page may take
 BR_HINT_COLS equ 48
 BR_WARN      equ 0x00bf616a
 
@@ -134,6 +135,9 @@ cmd_browse:
 ;       width, br_top 0; a page that does not load is a one-line message
 ; clobbers: caller-saved
 br_open:
+    push rbx
+    mov ebx, BR_REDIRECTS
+.fetch:
     lea rdi, [rel br_url]
     mov ecx, BR_URL_MAX - 1
 .copy:
@@ -147,11 +151,28 @@ br_open:
     lea rdi, [rel br_url]
     call http_get
     jc .failed
+    call http_redirect
+    jc .page
+    dec ebx
+    jz .loop
+    lea rsi, [rel http_location]
+    call br_resolve
+    jc .page
+    lea rsi, [rel br_next]
+    jmp .fetch
+.page:
+    pop rbx
     call http_body
     mov rdi, rax
     mov esi, ecx
     jmp br_layout
+.loop:
+    pop rbx
+    lea rdi, [rel br_msg_loop]
+    mov esi, br_msg_loop_len
+    jmp br_layout
 .failed:
+    pop rbx
     lea rdi, [rel br_msg_failed]
     mov esi, br_msg_failed_len
 
@@ -542,6 +563,8 @@ br_colours dd COLOR_FG, GL_CHANGED, GL_ACCENT, GL_DIM
 
 br_msg_failed     db "<p>This page did not load."
 br_msg_failed_len equ $ - br_msg_failed
+br_msg_loop       db "<p>This page redirects too many times."
+br_msg_loop_len   equ $ - br_msg_loop
 br_msg_no_screen  db "[browse] needs the screen", 10, 0
 br_msg_keys       db "number+Enter link  g address  b back  q quit", 0
 br_msg_tls        db "TLS, certificate UNVERIFIED "
