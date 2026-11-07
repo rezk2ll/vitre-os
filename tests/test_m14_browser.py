@@ -1,3 +1,6 @@
+import socket
+import threading
+
 from harness import SHELL_READY, Vm
 from test_m11_net import run
 from test_m13_tcp import serve_once
@@ -62,3 +65,47 @@ def test_browse_shows_and_scrolls():
         vm.wait_screen(r"line 000")
         vm.sendkeys("q")
         vm.wait_for(r"\r\nvitre> ", start=pos)
+
+
+def serve_pages(pages):
+    sock = socket.create_server(("127.0.0.1", 0))
+
+    def loop():
+        while True:
+            conn = sock.accept()[0]
+            with conn:
+                data = b""
+                while b"\r\n\r\n" not in data:
+                    chunk = conn.recv(4096)
+                    if not chunk:
+                        break
+                    data += chunk
+                path = data.split(b" ")[1].decode() if b" " in data else "/"
+                conn.sendall(page(pages.get(path, b"<title>Missing</title>")))
+
+    threading.Thread(target=loop, daemon=True).start()
+    return sock.getsockname()[1]
+
+
+def test_browse_follows_links():
+    port = serve_pages({
+        "/": b"<title>Home</title><a href='docs/a.html'>a</a>",
+        "/docs/a.html": b"<title>Page A</title><a href=c.html>c</a> <a href='/b'>b</a>",
+        "/docs/c.html": b"<title>Page C</title>", "/b": b"<title>Page B</title>",
+    })
+    with Vm("m14_links", net=True) as vm:
+        vm.wait_for(SHELL_READY)
+        vm.sendkeys("browse\n")
+        vm.wait_screen(r"Vitre browser")
+        vm.sendkeys(f"g10.0.2.2:{port}/\n")
+        vm.wait_screen(r"^ Home")
+        vm.sendkeys("1\n")
+        vm.wait_screen(r"^ Page A[\s\S]*http://10\.0\.2\.2:\d+/docs/a\.html")
+        vm.sendkeys("1\n")
+        vm.wait_screen(r"^ Page C[\s\S]*/docs/c\.html")
+        vm.sendkeys("b")
+        vm.wait_screen(r"^ Page A")
+        vm.sendkeys("2\n")
+        vm.wait_screen(r"^ Page B[\s\S]*:\d+/b ")
+        vm.sendkeys("bb")
+        vm.wait_screen(r"^ Home")
