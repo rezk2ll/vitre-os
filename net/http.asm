@@ -143,6 +143,32 @@ http_append:
 .done:
     ret
 
+; name: http_body
+; in:   a response in tcp_rx
+; out:  rax = its body, ecx = the body's length (the whole response if it
+;       has no header end)
+; clobbers: rax, rcx, rdx
+http_body:
+    lea rax, [rel tcp_rx]
+    mov ecx, [rel tcp_rx_len]
+    lea rdx, [rax + rcx - 3]
+.find:
+    cmp rax, rdx
+    jae .whole
+    cmp dword [rax], 0x0a0d0a0d     ; "\r\n\r\n"
+    je .found
+    inc rax
+    jmp .find
+.found:
+    add rax, 4
+    lea rdx, [rel tcp_rx]
+    sub rdx, rax
+    add ecx, edx
+    ret
+.whole:
+    lea rax, [rel tcp_rx]
+    ret
+
 ; name: cmd_get
 ; in:   rdi = URL
 ; out:  the response printed without CRs, then its size

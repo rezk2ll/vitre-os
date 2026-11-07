@@ -160,6 +160,7 @@ selftest_pit:
 %include "net/dns.asm"
 %include "net/tcp.asm"
 %include "net/http.asm"
+%include "apps/html.asm"
 %include "kernel/report.asm"
 %include "kernel/symbols.asm"
 %include "forge/lex.asm"
