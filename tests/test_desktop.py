@@ -3,9 +3,22 @@ import time
 from harness import SHELL_READY, TestFailure, Vm
 from test_mouse import move, pixel
 
-BROWSER_TILE = (0x5e, 0x81, 0xac)
+BROWSER = (0x5e, 0x81, 0xac)
 OUTLINE = (0xec, 0xef, 0xf4)
-SNAKE_BG = (0x2e, 0x34, 0x40)
+ROWS = 7                                # icons in a column on a 768-row screen
+ICONS = ["Terminal", "Browser", "Glass", "Files", "Monitor", "Reboot", "Shut down"]
+
+
+def corner(name):
+    """Top-left pixel of an icon's square."""
+    i = ICONS.index(name)
+    return 16 + i // ROWS * 112 + 24, 40 + i % ROWS * 104
+
+
+def point(vm, name):
+    x, y = corner(name)
+    move(vm, -5000, -5000)
+    move(vm, x + 32, y + 32)
 
 
 def click(vm):
@@ -13,6 +26,11 @@ def click(vm):
         vm.qmp("input-send-event",
                events=[{"type": "btn", "data": {"down": down, "button": "left"}}])
         time.sleep(0.1)
+
+
+def open_icon(vm, name):
+    point(vm, name)
+    click(vm)
 
 
 def wait_pixel(vm, x, y, rgb, timeout=10):
@@ -23,28 +41,29 @@ def wait_pixel(vm, x, y, rgb, timeout=10):
         time.sleep(0.2)
 
 
+def wait_desktop(vm):
+    x, y = corner("Browser")
+    wait_pixel(vm, x + 6, y + 32, BROWSER)
+
+
 def test_desktop_opens_apps():
     with Vm("desktop", net=True) as vm:
         pos = vm.wait_for(SHELL_READY).end()
         vm.sendkeys("desktop\n")
-        wait_pixel(vm, 420, 230, BROWSER_TILE)
-        move(vm, -110, -90)             # onto the Browser tile
-        wait_pixel(vm, 420, 225, OUTLINE)
-        move(vm, 0, 100)                # into the gap below it
-        wait_pixel(vm, 420, 225, BROWSER_TILE)
-        move(vm, 0, -100)
-        click(vm)
+        wait_desktop(vm)
+        x, y = corner("Browser")
+        point(vm, "Browser")
+        wait_pixel(vm, x + 1, y + 1, OUTLINE)
+        move(vm, 200, 0)                # off every icon
+        wait_pixel(vm, x + 1, y + 1, BROWSER)
+        open_icon(vm, "Browser")
         vm.wait_screen(r"Vitre browser")
         vm.sendkeys("q")
-        wait_pixel(vm, 420, 230, BROWSER_TILE)
-        vm.sendkeys("6")                # Snake
-        wait_pixel(vm, 420, 230, SNAKE_BG)
-        vm.sendkeys("q")
-        wait_pixel(vm, 420, 230, BROWSER_TILE)
-        vm.sendkeys("4")                # Files
+        wait_desktop(vm)
+        open_icon(vm, "Files")
         vm.wait_screen(r"Vitre files")
         vm.sendkeys("q")
-        wait_pixel(vm, 420, 230, BROWSER_TILE)
-        vm.sendkeys("1")                # Terminal
+        wait_desktop(vm)
+        open_icon(vm, "Terminal")
         vm.wait_for(r"vitre> ", start=pos)
         vm.wait_screen(r"^vitre>")
