@@ -150,6 +150,7 @@ selftest_pit:
 %include "forge/text.asm"
 %include "forge/screen.asm"
 %include "forge/editor.asm"
+%include "forge/find.asm"
 %include "forge/operand.asm"
 %include "forge/encode.asm"
 %include "forge/modrm.asm"

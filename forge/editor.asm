@@ -2,6 +2,7 @@
 ; Ctrl+S stores the text back into the source area, where `patch` and
 ; `save` pick it up. Ctrl+Q or Esc leaves.
 
+ED_KEY_FIND  equ 6                  ; Ctrl+F
 ED_KEY_QUIT  equ 17                 ; Ctrl+Q
 ED_KEY_STORE equ 19                 ; Ctrl+S
 ED_TAB       equ 4                  ; spaces a Tab inserts
@@ -100,6 +101,8 @@ ed_key:
     je .quit
     cmp ebx, ED_KEY_STORE
     je .store
+    cmp ebx, ED_KEY_FIND
+    je .find
     cmp ebx, 10
     je .insert
     cmp ebx, 9
@@ -198,6 +201,9 @@ ed_key:
     jmp .done
 .store:
     call ed_store
+    jmp .done
+.find:
+    call ed_find
 .done:
     pop rbx
     clc
