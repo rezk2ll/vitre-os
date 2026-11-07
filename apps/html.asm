@@ -1,9 +1,11 @@
 ; HTML layout: turns a page into lines of cells, each with a style, for a
-; given width. Blocks break lines and words wrap. Scripts, styles and
-; comments are skipped.
+; given width. Blocks break lines, words wrap, links get a number shown
+; after them as "[n]". Scripts, styles and comments are skipped.
 
 HTML_COLS      equ 128              ; widest layout
 HTML_LINES     equ 4096
+HTML_LINKS     equ 128
+HTML_HREF_MAX  equ 256
 HTML_TITLE_MAX equ 128
 HTML_WORD_MAX  equ HTML_COLS
 HTML_TAG_MAX   equ 16
@@ -12,6 +14,8 @@ HTML_VIEW_COLS equ 100
 ; cell styles
 HTML_TEXT    equ 0
 HTML_HEADING equ 1
+HTML_LINK    equ 2
+HTML_MARK    equ 3                  ; a link number
 
 ; tag kinds
 HTML_K_BLOCK equ 1                  ; breaks the line
@@ -19,10 +23,14 @@ HTML_K_PARA  equ 2                  ; breaks the line and leaves a blank one
 HTML_K_HEAD  equ 3                  ; a heading: a paragraph in its own style
 HTML_K_TITLE equ 4
 HTML_K_SKIP  equ 5                  ; its content is not shown
+HTML_K_LINK  equ 6
+HTML_K_ITEM  equ 7                  ; a list item
+HTML_K_RULE  equ 8
 
 ; name: html_layout
 ; in:   rdi = HTML, esi = length, edx = width in columns (at most HTML_COLS)
-; out:  html_lines lines in html_text and html_style, and html_title
+; out:  html_lines lines in html_text and html_style, html_title, and
+;       html_link_count links in html_links
 ; clobbers: caller-saved
 html_layout:
     push rbx
@@ -39,6 +47,7 @@ html_layout:
     mov [rel html_col], eax
     mov [rel html_word_len], eax
     mov [rel html_title_len], eax
+    mov [rel html_link_count], eax
     mov byte [rel html_space], 0
     mov byte [rel html_style_now], HTML_TEXT
     mov byte [rel html_in_title], 0
@@ -385,6 +394,11 @@ html_tag:
     mov byte [rdi + rcx], 0
     call html_tag_kind              ; eax = kind
     mov r15d, eax
+    cmp r15d, HTML_K_LINK
+    jne .attrs
+    test r14d, r14d
+    jnz .attrs
+    call html_href                  ; takes the attributes, up to ">"
 .attrs:
     cmp rbx, r12                    ; skip the rest of the tag
     jae .apply
@@ -427,6 +441,81 @@ html_tag_kind:
 .done:
     ret
 
+; name: html_href
+; in:   rbx = in an <a> tag, r12 = end
+; out:  its href stored as the next link and html_style_now set to links;
+;       rbx at the ">" or wherever the attributes ended
+; clobbers: rax, rcx, rdx, rdi
+html_href:
+    cmp rbx, r12
+    jae .done
+    cmp byte [rbx], '>'
+    je .done
+    lea rax, [rbx + 5]
+    cmp rax, r12
+    ja .done
+    mov eax, [rbx]
+    or eax, 0x20202020
+    cmp eax, 'href'
+    jne .skip
+    cmp byte [rbx + 4], '='
+    je .value
+.skip:
+    inc rbx
+    jmp html_href
+.value:
+    add rbx, 5
+    xor edx, edx                    ; edx = the quote, or 0
+    cmp rbx, r12
+    jae .done
+    mov al, [rbx]
+    cmp al, '"'
+    je .quoted
+    cmp al, 39
+    jne .copy
+.quoted:
+    mov dl, al
+    inc rbx
+.copy:
+    mov eax, [rel html_link_count]
+    cmp eax, HTML_LINKS
+    jae .done
+    shl eax, 8                      ; HTML_HREF_MAX bytes a link
+    lea rdi, [rel html_links]
+    add rdi, rax
+    xor ecx, ecx
+.char:
+    cmp rbx, r12
+    jae .stored
+    mov al, [rbx]
+    test dl, dl
+    jz .bare
+    cmp al, dl
+    je .stored_quote
+    jmp .keep
+.bare:
+    cmp al, '>'
+    je .stored
+    cmp al, ' '
+    jbe .stored
+.keep:
+    inc rbx
+    cmp ecx, HTML_HREF_MAX - 1
+    jae .char
+    mov [rdi + rcx], al
+    inc ecx
+    jmp .char
+.stored_quote:
+    inc rbx
+.stored:
+    mov byte [rdi + rcx], 0
+    inc dword [rel html_link_count]
+    mov al, [rel html_style_now]
+    mov [rel html_style_out], al    ; restored after the link
+    mov byte [rel html_style_now], HTML_LINK
+.done:
+    ret
+
 ; name: html_apply
 ; in:   edi = tag kind, esi = 1 if closing; the html_layout registers
 ; out:  the layout state changed for that tag
@@ -442,6 +531,12 @@ html_apply:
     je .title
     cmp edi, HTML_K_SKIP
     je .skip
+    cmp edi, HTML_K_LINK
+    je .link
+    cmp edi, HTML_K_ITEM
+    je .item
+    cmp edi, HTML_K_RULE
+    je .rule
     ret
 .block:
     xor esi, esi
@@ -466,6 +561,44 @@ html_apply:
     mov [rel html_in_title], al
     mov byte [rel html_space], 0
     ret
+.link:
+    test esi, esi
+    jz .done
+    cmp byte [rel html_style_now], HTML_LINK
+    jne .done
+    mov byte [rel html_style_now], HTML_MARK
+    mov edi, '['
+    call html_char
+    mov edi, [rel html_link_count]
+    call html_number
+    mov edi, ']'
+    call html_char
+    mov al, [rel html_style_out]
+    mov [rel html_style_now], al
+    ret
+.item:
+    test esi, esi
+    jnz .done
+    xor esi, esi
+    call html_break
+    mov edi, '*'
+    call html_char
+    call html_flush
+    mov byte [rel html_space], 1
+    ret
+.rule:
+    xor esi, esi
+    call html_break
+    mov ecx, r13d
+.dash:
+    push rcx
+    mov edi, '-'
+    call html_char
+    pop rcx
+    dec ecx
+    jnz .dash
+    xor esi, esi
+    jmp html_break
 .skip:
     test esi, esi                   ; jump to the matching close tag
     jnz .done
@@ -508,10 +641,35 @@ html_apply:
     mov rbx, r12
     ret
 
+; name: html_number
+; in:   edi = number
+; out:  its decimal digits added to the current word
+; clobbers: rax, rcx, rdx, rdi
+html_number:
+    mov eax, edi
+    xor ecx, ecx
+.split:
+    xor edx, edx
+    mov edi, 10
+    div edi
+    push rdx
+    inc ecx
+    test eax, eax
+    jnz .split
+.emit:
+    pop rdi
+    add edi, '0'
+    push rcx
+    call html_char
+    pop rcx
+    dec ecx
+    jnz .emit
+    ret
+
 ; name: cmd_view
 ; in:   rdi = URL
-; out:  the page fetched, laid out HTML_VIEW_COLS wide and printed after
-;       its title
+; out:  the page fetched, laid out HTML_VIEW_COLS wide and printed with its
+;       title and link list
 ; clobbers: caller-saved
 cmd_view:
     push rbx
@@ -535,7 +693,7 @@ cmd_view:
     xor ebx, ebx
 .line:
     cmp ebx, [rel html_lines]
-    jae .done
+    jae .links
     mov r12d, ebx
     shl r12d, 7
     lea rax, [rel html_text]
@@ -561,6 +719,26 @@ cmd_view:
     call kputc
     inc ebx
     jmp .line
+.links:
+    xor ebx, ebx
+.link:
+    cmp ebx, [rel html_link_count]
+    jae .done
+    mov edi, '['
+    call kputc
+    lea edi, [rbx + 1]
+    call [rel jt_kput_dec]
+    lea rdi, [rel html_msg_link]
+    call kputs
+    mov eax, ebx
+    shl eax, 8
+    lea rdi, [rel html_links]
+    add rdi, rax
+    call kputs
+    mov edi, 10
+    call kputc
+    inc ebx
+    jmp .link
 .failed:
     lea rdi, [rel http_msg_failed]
     call kputs
@@ -575,12 +753,13 @@ cmd_view:
     ret
 
 html_msg_title db "[view] ", 0
+html_msg_link  db "] ", 0
 
 ; kind, then the name; a 0 kind ends the table
 html_tags:
     db HTML_K_BLOCK, "br", 0, HTML_K_BLOCK, "div", 0, HTML_K_BLOCK, "tr", 0
     db HTML_K_BLOCK, "table", 0, HTML_K_BLOCK, "ul", 0, HTML_K_BLOCK, "ol", 0
-    db HTML_K_BLOCK, "li", 0, HTML_K_BLOCK, "hr", 0, HTML_K_BLOCK, "dd", 0
+    db HTML_K_ITEM, "li", 0, HTML_K_RULE, "hr", 0, HTML_K_BLOCK, "dd", 0
     db HTML_K_BLOCK, "section", 0, HTML_K_BLOCK, "header", 0
     db HTML_K_BLOCK, "footer", 0, HTML_K_BLOCK, "nav", 0, HTML_K_BLOCK, "main", 0
     db HTML_K_BLOCK, "article", 0, HTML_K_BLOCK, "form", 0, HTML_K_BLOCK, "dt", 0
@@ -588,7 +767,7 @@ html_tags:
     db HTML_K_HEAD, "h1", 0, HTML_K_HEAD, "h2", 0, HTML_K_HEAD, "h3", 0
     db HTML_K_HEAD, "h4", 0, HTML_K_HEAD, "h5", 0, HTML_K_HEAD, "h6", 0
     db HTML_K_TITLE, "title", 0, HTML_K_SKIP, "script", 0, HTML_K_SKIP, "style", 0
-    db HTML_K_SKIP, "svg", 0, HTML_K_SKIP, "noscript", 0
+    db HTML_K_SKIP, "svg", 0, HTML_K_SKIP, "noscript", 0, HTML_K_LINK, "a", 0
     db 0
 
 ; character, then the name with its ';'; a 0 character ends the table
@@ -602,8 +781,10 @@ html_lines      resd 1
 html_col        resd 1
 html_word_len   resd 1
 html_title_len  resd 1
+html_link_count resd 1
 html_space      resb 1
 html_style_now  resb 1
+html_style_out  resb 1
 html_in_title   resb 1
 html_tag_name   resb HTML_TAG_MAX
 html_word       resb HTML_WORD_MAX
@@ -612,4 +793,5 @@ html_title      resb HTML_TITLE_MAX
 alignb 4096
 html_text       resb HTML_LINES * HTML_COLS
 html_style      resb HTML_LINES * HTML_COLS
+html_links      resb HTML_LINKS * HTML_HREF_MAX
 section .text
