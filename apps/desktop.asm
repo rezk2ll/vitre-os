@@ -13,7 +13,7 @@ DT_ICON     equ 64                  ; the icon square, at the top of its cell
 DT_ICON_X   equ (DT_CELL_W - DT_ICON) / 2
 DT_LABEL    equ 13                  ; label characters shown under an icon
 DT_ENTRY    equ 32                  ; label, action, argument, colour, letter
-DT_APPS     equ 8
+DT_APPS     equ 9
 DT_MAX      equ 64
 DT_SCALE    equ 4                   ; icon letters are the font at 4x
 DT_OUTLINE  equ 3                   ; the hovered icon's border, in pixels
@@ -828,6 +828,7 @@ dt_apps:
     dt_app dt_l_term, 0, 0, 0x002e3440, '>'
     dt_app dt_l_web, cmd_browse, dt_empty, 0x005e81ac, 'W'
     dt_app dt_l_video, dt_video, 0, 0x00d8a0c0, 'V'
+    dt_app dt_l_paint, cmd_paint, dt_empty, 0x00ebcb8b, 'P'
     dt_app dt_l_glass, cmd_glass, dt_empty, 0x00b48ead, 'G'
     dt_app dt_l_files, cmd_files, dt_empty, 0x00a3be8c, 'F'
     dt_app dt_l_top, cmd_top, dt_empty, 0x0088c0d0, 'M'
@@ -851,6 +852,7 @@ dt_l_term        db "Terminal", 0
 dt_l_web         db "Browser", 0
 dt_l_video       db "Video", 0
 dt_msg_video     db "video URL, empty cancels: ", 0
+dt_l_paint       db "Paint", 0
 dt_l_glass       db "Glass", 0
 dt_l_files       db "Files", 0
 dt_l_top         db "Monitor", 0

@@ -177,6 +177,7 @@ selftest_pit:
 %include "apps/browser.asm"
 %include "apps/play.asm"
 %include "apps/sound.asm"
+%include "apps/paint.asm"
 %include "apps/desktop.asm"
 %include "apps/monitor.asm"
 %include "lib/sha256.asm"

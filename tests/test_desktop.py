@@ -8,7 +8,7 @@ BROWSER = (0x5e, 0x81, 0xac)
 DOC = (0x81, 0xa1, 0xc1)
 OUTLINE = (0xec, 0xef, 0xf4)
 ROWS = 7                                # icons in a column on a 768-row screen
-ICONS = ["Terminal", "Browser", "Video", "Glass", "Files", "Monitor", "Reboot", "Shut down",
+ICONS = ["Terminal", "Browser", "Video", "Paint", "Glass", "Files", "Monitor", "Reboot", "Shut down",
          "cube.asm", "guess.asm", "hello.asm", "snake.asm", "song.asm", "welcome.txt", "note.txt"]
 
 
