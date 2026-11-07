@@ -161,6 +161,7 @@ selftest_pit:
 %include "net/tcp.asm"
 %include "net/http.asm"
 %include "apps/html.asm"
+%include "apps/browser.asm"
 %include "kernel/report.asm"
 %include "kernel/symbols.asm"
 %include "forge/lex.asm"
