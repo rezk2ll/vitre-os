@@ -1,6 +1,8 @@
-; PS/2 mouse on IRQ 12, the i8042's second port, streaming 3-byte packets.
-; mouse_x and mouse_y follow it in screen pixels, mouse_buttons holds its
-; buttons (bit 0 left, 1 right, 2 middle) and mouse_moves counts packets.
+; PS/2 mouse on IRQ 12, the i8042's second port, streaming 3-byte packets,
+; or 4 when it answers the IntelliMouse knock with a wheel. mouse_x and
+; mouse_y follow it in screen pixels, mouse_buttons holds its buttons (bit 0
+; left, 1 right, 2 middle), mouse_moves counts packets and mouse_wheel adds
+; up the wheel's notches, positive towards the user.
 
 MOUSE_TRIES equ 100000              ; polls before a silent controller is given up
 
@@ -39,6 +41,8 @@ mouse_init:
     mov al, 0xf6                    ; defaults
     call mouse_send
     jc .done
+    mov byte [rel mouse_size], 3
+    call mouse_knock
     mov al, 0xf4                    ; stream
     call mouse_send
     jc .done
@@ -60,6 +64,33 @@ mouse_init:
     stc
 .out:
     add rsp, 8
+    ret
+
+; name: mouse_knock
+; in:   the mouse answering commands, not streaming
+; out:  mouse_size = 4 if it turned on its wheel, else left alone
+; clobbers: rax, rcx, rdx
+mouse_knock:
+    lea rdx, [rel mouse_rates]
+.rate:
+    mov al, 0xf3                    ; set the sample rate
+    call mouse_send
+    jc .ret
+    mov al, [rdx]
+    call mouse_send
+    jc .ret
+    inc rdx
+    cmp byte [rdx], 0
+    jne .rate
+    mov al, 0xf2                    ; its id: 3 once the wheel is on
+    call mouse_send
+    jc .ret
+    call mouse_in
+    jc .ret
+    cmp al, 3
+    jne .ret
+    mov byte [rel mouse_size], 4
+.ret:
     ret
 
 ; name: mouse_drain
@@ -176,7 +207,7 @@ mouse_irq:
     lea rdx, [rel mouse_packet]
     mov [rdx + rcx], al
     inc ecx
-    cmp ecx, 3
+    cmp cl, [rel mouse_size]
     jb .keep
     call mouse_packet_done
     call cursor_off
@@ -229,7 +260,20 @@ mouse_packet_done:
     call mouse_clamp
     mov [rel mouse_y], eax
     inc qword [rel mouse_moves]
+    cmp byte [rel mouse_size], 4
+    jb .ret
+    movsx eax, byte [rel mouse_packet + 3]
+    add [rel mouse_wheel], eax
 .ret:
+    ret
+
+; name: mouse_scroll
+; in:   none
+; out:  eax = wheel notches since the last call, positive towards the user
+; clobbers: rax
+mouse_scroll:
+    xor eax, eax
+    xchg eax, [rel mouse_wheel]
     ret
 
 ; name: mouse_click
@@ -290,16 +334,19 @@ mouse_msg         db "mouse ", 0
 mouse_msg_ready   db "[mouse] ready", 10, 0
 mouse_msg_none    db "[mouse] no mouse", 10, 0
 mouse_msg_buttons db " buttons ", 0
+mouse_rates       db 200, 100, 80, 0 ; the IntelliMouse knock
 
 section .bss
 alignb 8
 mouse_moves   resq 1
 mouse_x       resd 1
 mouse_y       resd 1
-mouse_packet  resb 3
+mouse_packet  resb 4
 mouse_have    resb 1
 mouse_buttons resb 1
+mouse_size    resb 1                ; bytes a packet
 alignb 4
+mouse_wheel   resd 1
 mouse_presses resd 1                ; left button presses since boot
 mouse_seen    resd 1                ; mouse_presses at the last mouse_click
 section .text
