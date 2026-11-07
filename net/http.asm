@@ -17,6 +17,7 @@ http_get:
     push r12
     push r13
     mov rbx, rdi
+    mov byte [rel tls_verified], 0  ; a fetch that fails early shows no stale result
     mov byte [rel http_tls], 1
     mov dword [rel http_port], HTTPS_PORT
     lea rsi, [rel http_scheme_tls]
@@ -229,6 +230,10 @@ cmd_get:
     cmp byte [rel http_tls], 0
     je .bytes
     lea rdi, [rel http_msg_unverified]
+    cmp byte [rel tls_verified], 0
+    je .tls
+    lea rdi, [rel http_msg_verified]
+.tls:
     call kputs
 .bytes:
     mov edi, [rel tcp_rx_len]
@@ -258,6 +263,7 @@ http_tail       db 13, 10, "User-Agent: vitre", 13, 10, "Connection: close", 13,
 http_msg_size   db 10, "[http] ", 0
 http_msg_bytes  db " bytes", 10, 0
 http_msg_unverified db "over TLS, certificate NOT verified, ", 0
+http_msg_verified db "over TLS, certificate verified, ", 0
 http_msg_failed db "[http] no response", 10, 0
 
 section .bss

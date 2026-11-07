@@ -5,6 +5,8 @@
 TLS_WAIT_MS   equ 5000
 TLS_HS_MAX    equ 65536
 TLS_OUT_MAX   equ 4096
+TLS_CHAIN_MAX equ 4
+TLS_TRUST_MAX equ 8
 TLS_HANDSHAKE equ 22
 TLS_CCS       equ 20
 TLS_APP       equ 23
@@ -26,6 +28,8 @@ tls_handshake:
     mov [rel tls_rd_on], al
     mov [rel tls_proved], al
     mov [rel tls_named], al
+    mov [rel tls_chained], al
+    mov [rel tls_verified], al
     mov [rel tls_host], rdi
     push rdi
     lea rdi, [rel tls_ctx]
@@ -135,6 +139,10 @@ tls_finished:
     mov ecx, 32
     repe cmpsb
     jne .fail
+    mov al, [rel tls_proved]
+    and al, [rel tls_named]
+    and al, [rel tls_chained]
+    mov [rel tls_verified], al
     mov rsi, rbx
     mov ecx, r12d
     call tls_hs_add
@@ -179,44 +187,154 @@ tls_finished:
 
 ; name: tls_cert
 ; in:   rsi = the Certificate message, ecx = its length
-; out:  it kept in tls_certs, its first certificate parsed into tls_leaf
-;       as far as it reads; CF=1 if the message itself is malformed
+; out:  it kept in tls_certs, its certificates parsed into tls_leaf and
+;       the records after it up to the first one that does not read,
+;       tls_named and tls_chained set; CF=1 if the message is malformed
 ; clobbers: caller-saved
 tls_cert:
+    push rbx
+    push r12
+    push r13
     mov [rel tls_certs_len], ecx
     lea rdi, [rel tls_certs]
     rep movsb
+    mov byte [rel tls_chain_n], 0
     mov byte [rel tls_leaf + X5_KEYOK], 0
     lea rsi, [rel tls_certs]
     mov edx, [rel tls_certs_len]
-    cmp edx, 4 + 1 + 3 + 3
+    lea r12, [rsi + rdx]
+    cmp edx, 4 + 1 + 3
     jb .fail
     cmp byte [rsi + 4], 0           ; no request context
     jne .fail
-    movzx ecx, byte [rsi + 8]
+    lea rbx, [rsi + 8]
+    lea r13, [rel tls_leaf]
+.entry:
+    cmp byte [rel tls_chain_n], TLS_CHAIN_MAX
+    jae .parsed
+    lea rax, [rbx + 3]
+    cmp rax, r12
+    ja .parsed
+    movzx ecx, byte [rbx]
     shl ecx, 16
-    movzx eax, word [rsi + 9]
+    movzx eax, word [rbx + 1]
     xchg al, ah
     or ecx, eax
-    lea eax, [rcx + 11]
-    cmp eax, edx
+    lea rsi, [rbx + 3]
+    lea rax, [rsi + rcx + 2]        ; then its extensions' length
+    cmp rax, r12
     ja .fail
-    add rsi, 11
-    lea rdi, [rel tls_leaf]
+    movzx edx, word [rsi + rcx]
+    xchg dl, dh
+    lea rbx, [rax + rdx]
+    mov rdi, r13
     call x509_parse                 ; a key it cannot read is not an error
-    jnc .named
-    mov byte [rel tls_leaf + X5_KEYOK], 0
-    jmp .read
-.named:
+    jc .unread
+    inc byte [rel tls_chain_n]
+    add r13, X5_SIZE
+    jmp .entry
+.unread:
+    mov byte [r13 + X5_KEYOK], 0
+.parsed:
+    cmp byte [rel tls_chain_n], 0
+    je .done
     lea rdi, [rel tls_leaf]
     mov rsi, [rel tls_host]
     call x509_host_ok
     setnc [rel tls_named]
-.read:
+    call tls_chain_ok
+    setnc [rel tls_chained]
+.done:
     clc
-    ret
+    jmp .out
 .fail:
     stc
+.out:
+    pop r13
+    pop r12
+    pop rbx
+    ret
+
+; name: tls_chain_ok
+; in:   tls_chain_n certificates parsed from tls_leaf on
+; out:  CF=0 if each is signed by the next and the last by a trusted key
+; clobbers: caller-saved
+tls_chain_ok:
+    push rbx
+    push r12
+    push r13
+    movzx r12d, byte [rel tls_chain_n]
+    lea rbx, [rel tls_leaf]
+.link:
+    dec r12d
+    jz .anchor
+    mov rdi, rbx
+    lea rsi, [rbx + X5_SIZE]
+    call x509_signed_by
+    jc .done
+    add rbx, X5_SIZE
+    jmp .link
+.anchor:
+    lea r13, [rel tls_trust]
+    movzx r12d, byte [rel tls_trust_n]
+.key:
+    test r12d, r12d
+    jz .fail
+    mov rdi, rbx
+    mov rsi, r13
+    call x509_sig_by_key
+    jnc .done
+    add r13, 64
+    dec r12d
+    jmp .key
+.fail:
+    stc
+.done:
+    pop r13
+    pop r12
+    pop rbx
+    ret
+
+; name: cmd_trust
+; in:   rdi = arguments: a P-256 key in hex, x then y, or nothing
+; out:  the key added to the keys a chain may end at; their count printed
+; clobbers: caller-saved
+cmd_trust:
+    sub rsp, 8
+    cmp byte [rdi], 0
+    je .count
+    lea rsi, [rel tls_buf]
+    call cr_hex
+    jc .usage
+    cmp eax, 64
+    jne .usage
+    movzx eax, byte [rel tls_trust_n]
+    cmp eax, TLS_TRUST_MAX
+    jb .add
+    lea rdi, [rel tls_msg_trust_full]
+    call kputs
+    jmp .count
+.add:
+    shl eax, 6
+    lea rdi, [rel tls_trust]
+    add rdi, rax
+    lea rsi, [rel tls_buf]
+    mov ecx, 64
+    rep movsb
+    inc byte [rel tls_trust_n]
+.count:
+    lea rdi, [rel tls_msg_trusted]
+    call kputs
+    movzx edi, byte [rel tls_trust_n]
+    call [rel jt_kput_dec]
+    mov edi, 10
+    call kputc
+    add rsp, 8
+    ret
+.usage:
+    lea rdi, [rel tls_msg_trust_use]
+    call kputs
+    add rsp, 8
     ret
 
 ; name: tls_cert_verify
@@ -862,6 +980,9 @@ cmd_tls:
     cmp byte [rel tls_named], 0
     je .print
     lea rdi, [rel tls_msg_named]
+    cmp byte [rel tls_verified], 0
+    je .print
+    lea rdi, [rel tls_msg_verified]
     jmp .print
 .failed:
     lea rdi, [rel tls_msg_failed]
@@ -973,6 +1094,10 @@ tls_hs_order   db 8, 11, 15, 20     ; extensions, certificate, its proof, Finish
 tls_msg_ok     db "[tls] handshake done; the certificate is NOT verified", 10, 0
 tls_msg_proved db "[tls] handshake done; the server holds its certificate's key, but the certificate does NOT name it", 10, 0
 tls_msg_named  db "[tls] handshake done; the certificate names the server, which holds its key; the chain is NOT verified", 10, 0
+tls_msg_verified db "[tls] handshake done; certificate verified", 10, 0
+tls_msg_trusted db "[tls] trusted keys: ", 0
+tls_msg_trust_full db "[tls] no room for another key", 10, 0
+tls_msg_trust_use db "usage: trust [P-256 key x y in hex]", 10, 0
 tls_cv_head    times 64 db ' '
                db "TLS 1.3, server CertificateVerify", 0
 tls_cv_end:
@@ -988,6 +1113,10 @@ tls_rd_on     resb 1
 tls_got       resb 1
 tls_proved    resb 1
 tls_named     resb 1
+tls_chained   resb 1
+tls_verified  resb 1
+tls_chain_n   resb 1
+tls_trust_n   resb 1
 alignb 8
 tls_host      resq 1
 tls_certs_len resd 1
@@ -1017,7 +1146,8 @@ tls_label     resb 2 + 1 + 6 + 32 + 1 + 32
 tls_buf       resb 512
 tls_hs        resb TLS_HS_MAX
 tls_certs     resb TLS_HS_MAX
-tls_leaf      resb X5_SIZE
+tls_leaf      resb X5_SIZE * TLS_CHAIN_MAX ; the leaf, then its issuers
+tls_trust     resb 64 * TLS_TRUST_MAX
 tls_sig       resb 64
 tls_out       resb 5 + TLS_OUT_MAX + 1 + 16
 section .text
