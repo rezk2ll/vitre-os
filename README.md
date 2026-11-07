@@ -86,6 +86,19 @@ A few commands to try in the shell:
 
 Up and Down bring back earlier commands and Tab completes a command name. PgUp, PgDn and the mouse wheel scroll back through earlier output.
 
+### Watch a video
+
+Vitre plays its own video format, `.viv`: 256 colours, only the pixels that changed, cut in chunks it streams with HTTP range requests. `build/vivenc` (also assembly, built by `make test` or `make build/vivenc`) makes one from raw frames, so any video ffmpeg reads will do:
+
+```sh
+yt-dlp -f mp4 -o clip.mp4 <url>
+ffmpeg -i clip.mp4 -vf scale=320:180,fps=15 -f rawvideo -pix_fmt rgb24 - \
+  | build/vivenc 320 180 15 > clip.viv
+caddy file-server --listen :8000
+```
+
+Then click the Video icon and type `http://10.0.2.2:8000/clip.viv`, or run `play` with that URL in the shell. 10.0.2.2 is the host as QEMU's network sees it. The server has to answer range requests. Python 3.12's `http.server` ignores them, and then only the first chunk plays. q stops the video.
+
 ## Limits
 
 - QEMU with legacy BIOS boot is the only target. Real hardware is untested.
