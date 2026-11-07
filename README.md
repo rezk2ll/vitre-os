@@ -74,3 +74,7 @@ About 18,600 lines of assembly, a 120 KiB kernel.
 - [ABI.md](docs/ABI.md): calling convention and function headers
 - [DIALECT.md](docs/DIALECT.md): the NASM subset Forge assembles
 - [BRIEF.md](docs/BRIEF.md): the original spec
+
+## License
+
+[MIT](LICENSE)
