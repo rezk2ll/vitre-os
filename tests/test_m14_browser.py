@@ -18,6 +18,8 @@ EXAMPLE = b"""<!doctype html>
     domain in literature without prior coordination or asking for permission.</p>
     <!-- a comment <p>hidden</p> -->
     <p>Fish &amp; chips &lt;3 &#65;</p>
+    <p><a href="https://www.iana.org/domains/example">More information...</a></p>
+    <ul><li>one</li><li><a href='/two'>two</a></li></ul>
 </div>
 </body>
 </html>
@@ -40,6 +42,8 @@ def test_view_lays_out_example():
     port = serve_once(page(EXAMPLE))
     with Vm("m14_example", net=True) as vm:
         vm.wait_for(SHELL_READY)
-        text = run(vm, f"view 10.0.2.2:{port}", r"\[view\] Example Domain[\s\S]*Fish & chips <3 A\s").group(0)
+        text = run(vm, f"view 10.0.2.2:{port}", r"\[view\] Example Domain[\s\S]*\[2\] /two\s").group(0)
     assert "Example Domain\r\n\r\nThis domain is for use in illustrative examples in documents. You may use this" in text \
+        and "Fish & chips <3 A" in text and "More information...[1]" in text and "* one\r\n* two[2]" in text \
+        and "[1] https://www.iana.org/domains/example" in text \
         and not any(s in text for s in ["hidden", "background-color", "<p>", "\n>"]), text
