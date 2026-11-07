@@ -48,6 +48,17 @@ def test_run_shipped_programs():
         vm.wait_for(r"vitre> ", start=pos)
 
 
+def test_snake_runs_into_the_wall():
+    with Vm("run_snake") as vm:
+        pos = vm.wait_for(SHELL_READY).end()
+        vm.sendkeys("run snake.asm\n")
+        vm.press("down")
+        pos = vm.wait_for(r"snake: score \d+\r\n", start=pos, timeout=20).end()
+        vm.sendkeys("run snake.asm\n")
+        vm.sendkeys("q")
+        vm.wait_for(r"snake: score 0\r\n", start=pos)
+
+
 def test_write_and_run_a_program():
     with Vm("run_new") as vm:
         pos = vm.wait_for(SHELL_READY).end()
