@@ -41,6 +41,10 @@ def test_desktop_opens_apps():
         wait_pixel(vm, 420, 230, SNAKE_BG)
         vm.sendkeys("q")
         wait_pixel(vm, 420, 230, BROWSER_TILE)
+        vm.sendkeys("4")                # Files
+        vm.wait_screen(r"Vitre files")
+        vm.sendkeys("q")
+        wait_pixel(vm, 420, 230, BROWSER_TILE)
         vm.sendkeys("1")                # Terminal
         vm.wait_for(r"vitre> ", start=pos)
         vm.wait_screen(r"^vitre>")
