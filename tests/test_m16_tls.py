@@ -36,11 +36,11 @@ def serve_tls(handle):
     return sock.getsockname()[1]
 
 
-def test_tls_gets_a_server_hello():
+def test_tls_decrypts_with_the_handshake_keys():
     port = serve_tls(lambda tls: None)
     with Vm("m16_hello", net=True) as vm:
         vm.wait_for(SHELL_READY)
-        run(vm, f"tls 10.0.2.2 {port}", r"\[tls\] server hello received")
+        run(vm, f"tls 10.0.2.2 {port}", r"\[tls\] handshake keys work")
 
 
 def test_tls_refuses_a_plain_server():
