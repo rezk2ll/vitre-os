@@ -88,11 +88,26 @@ kputs:
 ; out:  none
 ; clobbers: rax, rcx, rdx, rdi
 kput_hex:
+    push rsi
+    mov esi, 16
+    call kput_hexn
+    pop rsi
+    ret
+
+; name: kput_hexn
+; in:   rdi = value, esi = digits (1-16), the low ones printed
+; out:  none
+; clobbers: rax, rcx, rdx, rdi
+kput_hexn:
     push rbx
     push r12
     sub rsp, 8
     mov rbx, rdi
-    mov r12d, 16
+    mov r12d, esi
+    mov ecx, 16
+    sub ecx, esi
+    shl ecx, 2
+    rol rbx, cl
 .digit:
     rol rbx, 4
     mov eax, ebx
