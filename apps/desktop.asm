@@ -9,6 +9,7 @@ DT_GAP      equ 40
 DT_COLS     equ 3
 DT_TILES    equ 6
 DT_ENTRY    equ 32                  ; label, action, argument, colour, letter
+DT_SCALE    equ 4                   ; icon letters are the font at 4x
 DT_BAR_BG   equ 0x000f141e
 DT_TEXT     equ 0x00eceff4
 DT_DIM      equ 0x009aa5b8
@@ -176,7 +177,7 @@ dt_origin:
 
 ; name: dt_tile_draw
 ; in:   edi = tile index
-; out:  the tile drawn: a box in its colour and its label
+; out:  the tile drawn: a box in its colour, its letter large, its label
 ; clobbers: caller-saved
 dt_tile_draw:
     push rbx
@@ -194,6 +195,11 @@ dt_tile_draw:
     mov ecx, DT_TILE_H
     mov r8d, [rbx + 24]
     call fb_fill_rect
+    lea rdi, [r12 + (DT_TILE_W - 8 * DT_SCALE) / 2]
+    lea rsi, [r13 + 16]
+    movzx edx, byte [rbx + 28]
+    mov ecx, DT_TEXT
+    call dt_big
     movzx eax, byte [rbx + 29]      ; the label, centred at the bottom
     lea rdi, [r12 + DT_TILE_W / 2]
     shl eax, 2
@@ -203,6 +209,57 @@ dt_tile_draw:
     mov ecx, DT_TEXT
     mov r8d, [rbx + 24]
     call dt_text
+    pop r13
+    pop r12
+    pop rbx
+    ret
+
+; name: dt_big
+; in:   rdi = x, rsi = y, edx = character, ecx = colour
+; out:  the character drawn DT_SCALE times its size, background untouched
+; clobbers: caller-saved
+dt_big:
+    push rbx
+    push r12
+    push r13
+    push r14
+    push r15
+    mov r12, rdi
+    mov r13, rsi
+    mov r15d, ecx
+    sub edx, FONT_FIRST
+    shl edx, 4
+    lea rbx, [rel font_8x16]
+    add rbx, rdx
+    xor r14d, r14d                  ; r14 = row << 8 | column
+.px:
+    mov eax, r14d
+    shr eax, 8
+    movzx edx, byte [rbx + rax]
+    mov ecx, r14d
+    and ecx, 7
+    shl edx, cl
+    test dl, 0x80
+    jz .next
+    mov edi, r14d
+    and edi, 7
+    imul edi, edi, DT_SCALE
+    add rdi, r12
+    imul esi, eax, DT_SCALE
+    add rsi, r13
+    mov edx, DT_SCALE
+    mov ecx, DT_SCALE
+    mov r8d, r15d
+    call fb_fill_rect
+.next:
+    inc r14d
+    test r14d, 8
+    jz .px
+    add r14d, 256 - 8               ; the next row, column 0
+    cmp r14d, 16 << 8
+    jb .px
+    pop r15
+    pop r14
     pop r13
     pop r12
     pop rbx
