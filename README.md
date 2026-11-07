@@ -89,6 +89,12 @@ Up and Down bring back earlier commands and Tab completes a command name. PgUp, 
 
 ### Watch a video
 
+`samples/demo.viv` is a 15 second clip with a tune: bouncing balls, and bars that jump with the melody. Serve it, then click the Video icon and type `http://10.0.2.2:8000/demo.viv`:
+
+```sh
+caddy file-server --root samples --listen :8000
+```
+
 Vitre plays its own video format, `.viv`: 256 colours, only the pixels that changed, 16 kHz sound, cut in chunks it streams with HTTP range requests. `build/vivenc` (also assembly, built by `make test` or `make build/vivenc`) makes one from raw frames and raw sound, so any video ffmpeg reads will do:
 
 ```sh
