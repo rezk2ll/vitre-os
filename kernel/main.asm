@@ -145,6 +145,7 @@ selftest_pit:
 %include "glass/scrollback.asm"
 %include "glass/cursor.asm"
 %include "glass/provenance.asm"
+%include "glass/provwalk.asm"
 %include "drivers/keyboard.asm"
 %include "drivers/mouse.asm"
 %include "kernel/pmm.asm"
