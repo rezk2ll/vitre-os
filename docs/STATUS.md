@@ -2,7 +2,7 @@
 
 ## Current milestone
 
-M12 done. Next: M13, TCP.
+M14 done. Next: M15, crypto primitives.
 
 ## Milestones
 
@@ -20,6 +20,8 @@ M12 done. Next: M13, TCP.
 - M10: done. `pause`, `resume` and `step` control a task (`spin` starts one to try them on). `break` sets one-shot int3 breakpoints. `dis` disassembles kernel code, and a test checks it against ndisasm over two dozen functions. `glass <task>` shows a live full-screen view: registers with changes highlighted, code around RIP, the stack with symbols, and memory. Its keys pause, step, or open the module under RIP in the editor.
 - M11: done. `lspci` lists PCI devices. The e1000 driver brings the card up with interrupt-driven receive, and `net` shows the MAC, link and frame counters. ARP answers for 10.0.2.15 and caches senders (`arp`). IPv4 and ICMP echo answer pings, and `ping 10.0.2.2` gets replies from QEMU's gateway.
 - M12: done. UDP carries a DHCP client that runs at boot and takes the address, mask, gateway and DNS server from the lease (`dhcp` asks again). `host example.com` resolves A records through that server.
+- M13: done. TCP opens one connection at a time, sends with retransmission and receives in order into a 256 KiB buffer. `tcp host port` tries a connection, and `get http://host/path` fetches a page over HTTP/1.0 and prints the raw response.
+- M14: done. An HTML layout turns a page into wrapped lines: block tags break lines, entities are decoded, scripts and styles are skipped, and links are numbered. `view <url>` prints the result. `browse [url]` is a full-screen browser: title and address bars, coloured headings and links, scrolling, links followed by number (relative ones resolved), `g` for an address and `b` for back.
 
 ## Stubs
 
@@ -29,5 +31,5 @@ M12 done. Next: M13, TCP.
 
 - stage1: 512 bytes
 - stage2: 16 KiB slot (code is under 1 KiB)
-- kernel: 84728 bytes (4 KiB interrupt stubs and table, 3.5 KiB font, symbol and label tables, Forge, editor, disassembler, Glass, network stack)
+- kernel: 96632 bytes (4 KiB interrupt stubs and table, 3.5 KiB font, symbol and label tables, Forge, editor, disassembler, Glass, network stack, browser)
 - source area: 3047 bytes

@@ -109,3 +109,19 @@ A patchable module is a whole file written in the Vitre dialect (docs/DIALECT.md
 - One query in flight at a time, with fixed client ports and transaction IDs. A lookup waits up to 2 s per try, 3 tries.
 - DNS takes the first A record of the answer and skips CNAMEs, since recursive servers include the final A records in the same answer.
 - UDP checksums are 0 on send, as IPv4 allows, and are not checked on receive.
+
+## D23. TCP
+
+- One connection at a time, which is all a page fetch needs. There is no TIME_WAIT: the next connection picks a new local port.
+- Sending is stop-and-wait, one 1024-byte segment until it is acknowledged, retried 3 times. Requests are small, so a send window would add code and no speed.
+- Receiving takes in-order data only, into a 256 KiB buffer, and the advertised window is the room left in it. Out-of-order segments are dropped and the peer resends them.
+- The send sequence number advances before the segment leaves, because the answer is handled in the IRQ and can arrive before `ip_send` returns.
+- The initial sequence number mixes the tick count with a constant. It is not meant to resist guessing.
+- Tests serve pages from the host (10.0.2.2) rather than example.com, so they run offline.
+
+## D24. Browser
+
+- HTTP/1.0 with `Connection: close`: the end of the body is the end of the connection, so there is no chunked encoding or Content-Length to handle.
+- The layout is a grid of character cells with a style per cell, not a box tree. It wraps at the screen width once per page, and scrolling only redraws.
+- Links are followed by typing their number, since there is no mouse driver. The number is shown after the link text.
+- `https://` links are fetched as `http://` until TLS lands (M16). Redirects are shown as the page they return, not followed.
