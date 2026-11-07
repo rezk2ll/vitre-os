@@ -81,6 +81,55 @@ cr_hkdf:                            ; salt, input key, info, one-byte length
     movzx esi, byte [rel cr_arg + 3 * CR_MAX]
     jmp cr_print_out
 
+cr_poly1305:                        ; key, data
+    lea rdi, [rel cr_arg]
+    call poly1305_init
+    lea rsi, [rel cr_arg + CR_MAX]
+    mov edx, [rel cr_lens + 4]
+    xor ecx, ecx
+    call poly1305_update
+    lea rdi, [rel cr_out]
+    call poly1305_final
+    mov esi, 16
+    jmp cr_print_out
+
+cr_seal:                            ; key, nonce, additional data, data
+    call cr_aead_args
+    call aead_seal
+    mov esi, [rel cr_lens + 12]
+    add esi, 16
+    jmp cr_print_out
+
+cr_open:                            ; as cr_seal, the data ending in its tag
+    call cr_aead_args
+    sub r9, 16
+    jb .bad
+    mov [rel cr_lens + 12], r9d
+    call aead_open
+    jc .bad
+    mov esi, [rel cr_lens + 12]
+    jmp cr_print_out
+.bad:
+    lea rdi, [rel cr_msg_bad]
+    jmp kputs
+
+; name: cr_aead_args
+; in:   cr_arg holding key, nonce, additional data, data
+; out:  the data copied to cr_out; aead_seal's arguments set over it
+; clobbers: rcx, rdx, rsi, rdi, r8, r9
+cr_aead_args:
+    lea rdi, [rel cr_out]
+    lea rsi, [rel cr_arg + 3 * CR_MAX]
+    mov ecx, [rel cr_lens + 12]
+    rep movsb
+    lea rdi, [rel cr_arg]
+    lea rsi, [rel cr_arg + CR_MAX]
+    lea rdx, [rel cr_arg + 2 * CR_MAX]
+    mov ecx, [rel cr_lens + 8]
+    lea r8, [rel cr_out]
+    mov r9d, [rel cr_lens + 12]
+    ret
+
 cr_chacha20:                        ; key, nonce, one-byte counter, data
     lea rdi, [rel cr_arg]
     movzx esi, byte [rel cr_arg + 2 * CR_MAX]
@@ -224,14 +273,22 @@ cr_table:
     dq cr_n_hmac, cr_hmac, 2
     dq cr_n_hkdf, cr_hkdf, 4
     dq cr_n_chacha20, cr_chacha20, 4
+    dq cr_n_poly1305, cr_poly1305, 2
+    dq cr_n_seal, cr_seal, 4
+    dq cr_n_open, cr_open, 4
     dq 0
 
 cr_n_sha256   db "sha256", 0
 cr_n_hmac     db "hmac", 0
 cr_n_hkdf     db "hkdf", 0
 cr_n_chacha20 db "chacha20", 0
+cr_n_poly1305 db "poly1305", 0
+cr_n_seal     db "seal", 0
+cr_n_open     db "open", 0
+cr_msg_bad    db "crypto: bad tag", 10, 0
 cr_msg_usage db "usage: crypto sha256 <data> | hmac <key> <data> | hkdf <salt> <key> <info> <len>", 10
-             db "       | chacha20 <key> <nonce> <counter> <data>", 10
+             db "       | chacha20 <key> <nonce> <counter> <data> | poly1305 <key> <data>", 10
+             db "       | seal|open <key> <nonce> <additional data> <data>", 10
              db "       inputs in hex, - for an empty one", 10, 0
 
 section .bss
@@ -240,5 +297,5 @@ cr_lens resd CR_ARGS
 cr_ctx  resb SHA_CTX_SIZE
 cr_prk  resb 32
 cr_arg  resb CR_ARGS * CR_MAX
-cr_out  resb CR_MAX
+cr_out  resb CR_MAX + 16            ; sealed data and its tag
 section .text
