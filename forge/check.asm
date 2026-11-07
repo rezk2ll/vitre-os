@@ -1,11 +1,6 @@
 ; Forge self-check: every module in the source area must assemble to the
 ; bytes NASM put in the kernel image.
 
-SRC_HDR_COUNT equ 4
-SRC_DIR       equ 16                ; directory after the source area header
-SRC_DIR_ENTRY equ 48                ; path (32 bytes), offset, length
-SRC_DIR_START equ 32
-SRC_DIR_LEN   equ 36
 FORGE_CHECK_PAGES equ 16
 
 ; name: forge_check
@@ -63,16 +58,7 @@ forge_check:
     call kputs
     jmp .next
 .error:
-    lea rdi, [rel forge_msg_line]
-    call kputs
-    mov rdi, [rel forge_error_line]
-    call [rel jt_kput_dec]
-    lea rdi, [rel forge_msg_colon]
-    call kputs
-    mov rdi, [rel forge_error]
-    call kputs
-    mov edi, 10
-    call kputc
+    call forge_log_error
     jmp .next
 .done:
     mov rdi, r15
@@ -92,6 +78,25 @@ forge_check:
     pop r13
     pop r12
     pop rbx
+    ret
+
+; name: forge_log_error
+; in:   forge_assemble just failed
+; out:  "line N: message" on the log
+; clobbers: caller-saved
+forge_log_error:
+    sub rsp, 8
+    lea rdi, [rel forge_msg_line]
+    call kputs
+    mov rdi, [rel forge_error_line]
+    call [rel jt_kput_dec]
+    lea rdi, [rel forge_msg_colon]
+    call kputs
+    mov rdi, [rel forge_error]
+    call kputs
+    mov edi, 10
+    call kputc
+    add rsp, 8
     ret
 
 ; name: forge_compare
