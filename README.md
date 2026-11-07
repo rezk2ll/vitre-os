@@ -57,6 +57,18 @@ Glass shows a task's registers, the disassembly around RIP, its stack with symbo
 
 <p align="center"><img src="docs/images/glass.gif" width="800" alt="Glass pausing and single-stepping a running task"></p>
 
+### Ask any pixel who drew it
+
+Every pixel on screen remembers the call chain that drew it. Press F12 in any app to freeze the screen, then click: everything else dims and the functions behind that pixel appear beside the pointer. `why <x> <y>` prints the same chain in the shell.
+
+<p align="center"><img src="docs/images/inspect.gif" width="800" alt="F12 over the top monitor, clicking the memory bar and a task name to see the code that drew them"></p>
+
+### Write a program and run it
+
+Programs are assembly files on the disk. Write one in the editor and `run` it: Vitre assembles it with its own assembler and calls it. A program can call any kernel function by name, and if it crashes, only the program stops.
+
+<p align="center"><img src="docs/images/programs.gif" width="800" alt="Writing square.asm in the editor, running it, then playing guess.asm"></p>
+
 ### Get online
 
 DHCP at boot, then DNS, ICMP, TCP, HTTP and a TLS 1.3 client, all written in assembly.
@@ -69,6 +81,7 @@ A few commands to try in the shell:
 - `browse https://www.wikipedia.org/` opens the browser; click a link or type its number
 - `edit kernel/report.asm`, then `patch kernel/report.asm` and `rollback`
 - `glass` watches the newest task, or starts a demo one
+- `ls`, then `run hello.asm` or `run guess.asm`; `save` keeps your files across reboots
 - `desktop` goes back to the desktop, `shutdown` powers off
 
 Up and Down bring back earlier commands and Tab completes a command name. PgUp, PgDn and the mouse wheel scroll back through earlier output.
