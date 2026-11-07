@@ -178,3 +178,32 @@ def test_x25519_vectors():
         vm.wait_for(SHELL_READY)
         for k, u in cases:
             check(vm, f"x25519 {k.hex()} {u.hex()}", x25519(k, u).hex())
+
+
+def expand_label(secret, label, context, n):
+    label = b"tls13 " + label
+    return hkdf_expand(secret, struct.pack(">HB", n, len(label)) + label + bytes([len(context)])
+                       + context, n)
+
+
+def hkdf_expand(prk, info, n):
+    okm, t = b"", b""
+    for i in range(1, -(-n // 32) + 1):
+        t = hmac.digest(prk, t + info + bytes([i]), "sha256")
+        okm += t
+    return okm[:n]
+
+
+def test_tls_expand_label():
+    early = hmac.digest(bytes(32), bytes(32), "sha256")
+    # RFC 8448: the early secret without a PSK, and its "derived" secret
+    assert early.hex() == "33ad0a1c607ec03b09e6cd9893680ce210adf300aa1f2660e1b22e10f170f92a"
+    cases = [(early, b"derived", hashlib.sha256().digest(), 32),
+             (early, b"key", b"", 32), (early, b"iv", b"", 12), (early, b"finished", b"", 32)]
+    assert expand_label(*cases[0]).hex() == \
+        "6f2615a108c702c5678f54fc9dbab69716c076189c48250cebeac3576c3611ba"
+    with Vm("m15_label", cmdline=QWERTY) as vm:
+        vm.wait_for(SHELL_READY)
+        for secret, label, context, n in cases:
+            check(vm, f"label {secret.hex()} {label.hex()} {hx(context)} {n:02x}",
+                  expand_label(secret, label, context, n).hex())
