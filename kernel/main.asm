@@ -57,6 +57,7 @@ kernel_entry:
     call pit_init
     call sched_init
     call debug_init
+    call bp_init
     call src_load
     call patch_boot
     call kbd_init
@@ -140,6 +141,7 @@ selftest_pit:
 %include "kernel/sched.asm"
 %include "kernel/tasktest.asm"
 %include "kernel/debug.asm"
+%include "kernel/breakpoint.asm"
 %include "drivers/ata.asm"
 %include "kernel/report.asm"
 %include "kernel/symbols.asm"

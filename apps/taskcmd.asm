@@ -27,6 +27,46 @@ parse_dec:
     stc
     ret
 
+; name: parse_addr
+; in:   rdi = 0x and a hex number, or a kernel label
+; out:  rax = address; CF=1 if it is neither
+; clobbers: rcx, rdx, rdi, rsi
+parse_addr:
+    cmp word [rdi], "0x"
+    jne lab_lookup
+    add rdi, 2
+    xor eax, eax
+    xor edx, edx                    ; digits read
+.digit:
+    movzx ecx, byte [rdi]
+    test ecx, ecx
+    jz .end
+    sub ecx, '0'
+    cmp ecx, 9
+    jbe .add
+    add ecx, '0'
+    or ecx, 0x20                    ; lower case
+    sub ecx, 'a'
+    cmp ecx, 5
+    ja .bad
+    add ecx, 10
+.add:
+    shl rax, 4
+    add rax, rcx
+    inc rdi
+    inc edx
+    cmp edx, 16
+    ja .bad
+    jmp .digit
+.end:
+    test edx, edx
+    jz .bad
+    clc
+    ret
+.bad:
+    stc
+    ret
+
 ; name: spin_task
 ; in:   none
 ; out:  never returns: counts in a tight loop, a target for `step`
