@@ -48,3 +48,17 @@ def test_x509_reads_a_p256_certificate():
         for cert in certs:
             check(vm, f"x509 {cert.hex()}", expected(cert))
         check(vm, f"x509 {certs[0][:-1].hex()}", "")
+
+
+def test_x509_matches_the_host_name():
+    cert = make_cert("-addext", "subjectAltName=DNS:vitre.test,DNS:*.example.test,IP:10.0.2.2").hex()
+    cases = {"vitre.test": "01", "VITRE.Test": "01", "a.example.test": "01",
+             "example.test": "00", "a.b.example.test": "00", "vitre.tes": "00",
+             "10.0.2.2": "01", "10.0.2.3": "00"}
+    with Vm("m17_x509host", cmdline=QWERTY) as vm:
+        vm.wait_for(SHELL_READY)
+        for host, want in cases.items():
+            check(vm, f"x509host {cert} {host.encode().hex()}", want)
+        check(vm, f"x509host {make_cert().hex()} {b'v'.hex()}", "00")
+        tld = make_cert("-addext", "subjectAltName=DNS:*.test").hex()
+        check(vm, f"x509host {tld} {b'a.test'.hex()}", "00")

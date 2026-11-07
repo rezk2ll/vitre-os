@@ -193,6 +193,25 @@ cr_x509:                            ; DER: algorithm, key flag, key, signature
     mov esi, 2 + 128
     jmp cr_print_out
 
+cr_x509host:                        ; DER, host name: 01 if the certificate names it
+    mov byte [rel cr_out], 0
+    lea rdi, [rel cr_x5]
+    lea rsi, [rel cr_arg]
+    mov ecx, [rel cr_lens]
+    call x509_parse
+    jc .out
+    mov ecx, [rel cr_lens + 4]
+    cmp ecx, CR_MAX
+    jae .out
+    lea rsi, [rel cr_arg + CR_MAX]
+    mov byte [rsi + rcx], 0
+    lea rdi, [rel cr_x5]
+    call x509_host_ok
+    setnc [rel cr_out]
+.out:
+    mov esi, 1
+    jmp cr_print_out
+
 cr_ecmul:                           ; k, point x and y: the x of k times it
     lea rdi, [rel ec_u1]
     xor eax, eax
@@ -414,6 +433,7 @@ cr_table:
     dq cr_n_ecmul, cr_ecmul, 2
     dq cr_n_ecdsa, cr_ecdsa, 3
     dq cr_n_x509, cr_x509, 1
+    dq cr_n_x509host, cr_x509host, 2
     dq 0
 
 cr_n_sha256   db "sha256", 0
@@ -430,6 +450,7 @@ cr_n_ninv     db "ninv", 0
 cr_n_ecmul    db "ecmul", 0
 cr_n_ecdsa    db "ecdsa", 0
 cr_n_x509     db "x509", 0
+cr_n_x509host db "x509host", 0
 cr_msg_bad    db "crypto: bad tag", 10, 0
 cr_msg_usage db "usage: crypto sha256 <data> | hmac <key> <data> | hkdf <salt> <key> <info> <len>", 10
              db "       | chacha20 <key> <nonce> <counter> <data> | poly1305 <key> <data>", 10
@@ -439,6 +460,7 @@ cr_msg_usage db "usage: crypto sha256 <data> | hmac <key> <data> | hkdf <salt> <
              db "       | ecmul <k> <x y> (x of k times a P-256 point)", 10
              db "       | ecdsa <key x y> <hash> <r s> (P-256: 01 if valid)", 10
              db "       | x509 <certificate> (its algorithm, key and signature)", 10
+             db "       | x509host <certificate> <host> (01 if it names the host)", 10
              db "       inputs in hex, - for an empty one", 10, 0
 
 section .bss

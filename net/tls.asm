@@ -25,6 +25,8 @@ tls_handshake:
     mov [rel tls_hs_pos], eax
     mov [rel tls_rd_on], al
     mov [rel tls_proved], al
+    mov [rel tls_named], al
+    mov [rel tls_host], rdi
     push rdi
     lea rdi, [rel tls_ctx]
     call sha256_init
@@ -202,6 +204,15 @@ tls_cert:
     add rsi, 11
     lea rdi, [rel tls_leaf]
     call x509_parse                 ; a key it cannot read is not an error
+    jnc .named
+    mov byte [rel tls_leaf + X5_KEYOK], 0
+    jmp .read
+.named:
+    lea rdi, [rel tls_leaf]
+    mov rsi, [rel tls_host]
+    call x509_host_ok
+    setnc [rel tls_named]
+.read:
     clc
     ret
 .fail:
@@ -848,6 +859,9 @@ cmd_tls:
     cmp byte [rel tls_proved], 0
     je .print
     lea rdi, [rel tls_msg_proved]
+    cmp byte [rel tls_named], 0
+    je .print
+    lea rdi, [rel tls_msg_named]
     jmp .print
 .failed:
     lea rdi, [rel tls_msg_failed]
@@ -957,7 +971,8 @@ tls_l_cap      db "c ap traffic", 0
 tls_l_sap      db "s ap traffic", 0
 tls_hs_order   db 8, 11, 15, 20     ; extensions, certificate, its proof, Finished
 tls_msg_ok     db "[tls] handshake done; the certificate is NOT verified", 10, 0
-tls_msg_proved db "[tls] handshake done; the server holds its certificate's key, the chain is NOT verified", 10, 0
+tls_msg_proved db "[tls] handshake done; the server holds its certificate's key, but the certificate does NOT name it", 10, 0
+tls_msg_named  db "[tls] handshake done; the certificate names the server, which holds its key; the chain is NOT verified", 10, 0
 tls_cv_head    times 64 db ' '
                db "TLS 1.3, server CertificateVerify", 0
 tls_cv_end:
@@ -972,7 +987,9 @@ tls_hs_pos    resd 1
 tls_rd_on     resb 1
 tls_got       resb 1
 tls_proved    resb 1
-alignb 4
+tls_named     resb 1
+alignb 8
+tls_host      resq 1
 tls_certs_len resd 1
 alignb 8
 tls_rd        resb TLS_BLOCK

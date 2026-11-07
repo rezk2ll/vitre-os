@@ -7,7 +7,9 @@ X5_ISSUER   equ 16                  ; issuer and subject names, likewise
 X5_ISS_LEN  equ 24
 X5_SUBJECT  equ 32
 X5_SUB_LEN  equ 40
-X5_ALG      equ 60                  ; X5_ECDSA_SHA256, X5_ECDSA_SHA384 or 0
+X5_SAN      equ 48                  ; the subject alternative names' content
+X5_SAN_LEN  equ 56
+X5_ALG     equ 60                  ; X5_ECDSA_SHA256, X5_ECDSA_SHA384 or 0
 X5_KEYOK    equ 61                  ; 1 if the key is a P-256 one
 X5_KEY      equ 64                  ; its x then y
 X5_SIG      equ 128                 ; the signature's r then s
@@ -83,6 +85,8 @@ x509_parse:
     mov rbx, rdi
     lea rdx, [rsi + rcx]
     mov byte [rbx + X5_KEYOK], 0
+    mov qword [rbx + X5_SAN], 0
+    mov dword [rbx + X5_SAN_LEN], 0
     mov r8b, 0x30
     call der_expect
     jc .done
@@ -124,6 +128,23 @@ x509_parse:
     jc .done
     call x5_key
     jc .done
+.ext:
+    cmp rsi, rdx
+    jae .tail
+    call der_read
+    jc .done
+    cmp al, 0xa3
+    jne .next
+    push rdi
+    push rdx
+    call x5_extensions
+    pop rdx
+    pop rdi
+    jc .done
+.next:
+    mov rsi, rdi
+    jmp .ext
+.tail:
     mov rsi, r13
     mov rdx, r14
     mov r8b, 0x30                   ; the signature algorithm
@@ -231,6 +252,205 @@ x5_key:
 .ret:
     ret
 
+; name: x5_extensions
+; in:   rbx = record, rsi = the [3] content, ecx = its length
+; out:  the subject alternative names recorded if there are some; CF=1
+;       if the extensions are malformed
+; clobbers: rax, rcx, rdx, rsi, rdi, r8, r9
+x5_extensions:
+    lea rdx, [rsi + rcx]
+    mov r8b, 0x30
+    call der_expect
+    jc .ret
+    lea rdx, [rsi + rcx]
+.each:
+    cmp rsi, rdx
+    jae .ret                        ; CF=0 from the compare
+    mov r8b, 0x30
+    call der_expect
+    jc .ret
+    push rdi
+    push rdx
+    lea rdx, [rsi + rcx]
+    lea rdi, [rel x5_oid_san]
+    call x5_oid_is
+    jne .other
+    mov r8b, 0x06
+    call der_expect
+    jc .skip
+    mov rsi, rdi
+    cmp byte [rsi], 0x01            ; critical or not
+    jne .value
+    call der_read
+    jc .skip
+    mov rsi, rdi
+.value:
+    mov r8b, 0x04
+    call der_expect
+    jc .skip
+    lea rdx, [rsi + rcx]
+    mov r8b, 0x30
+    call der_expect
+    jc .skip
+    mov [rbx + X5_SAN], rsi
+    mov [rbx + X5_SAN_LEN], ecx
+.other:
+    clc
+.skip:
+    pop rdx
+    pop rsi
+    jc .ret
+    jmp .each
+.ret:
+    ret
+
+; name: x509_host_ok
+; in:   rdi = record, rsi = host name or dotted address, zero-terminated
+; out:  CF=0 if a subject alternative name matches it: a DNS name, any
+;       case, "*." standing for one whole leftmost label, or an IP address
+; clobbers: caller-saved
+x509_host_ok:
+    push rbx
+    push r12
+    push r13
+    push r14
+    sub rsp, 8
+    mov rbx, rdi
+    mov r12, rsi
+    mov rdi, rsi
+    xor ecx, ecx
+.len:
+    cmp byte [rdi + rcx], 0
+    je .have_len
+    inc ecx
+    jmp .len
+.have_len:
+    mov r13d, ecx
+    mov rdi, r12
+    call net_parse_ip
+    mov [rsp], eax
+    setnc [rsp + 4]
+    mov rsi, [rbx + X5_SAN]
+    test rsi, rsi
+    jz .fail
+    mov edx, [rbx + X5_SAN_LEN]
+    add rdx, rsi
+.each:
+    cmp rsi, rdx
+    jae .fail
+    call der_read
+    jc .fail
+    mov r14, rdi
+    cmp al, 0x87                    ; iPAddress
+    je .ip
+    cmp al, 0x82                    ; dNSName
+    jne .next
+    cmp byte [rsp + 4], 0           ; an address only matches an address
+    jne .next
+    call x5_dns_match
+    je .ok
+    jmp .next
+.ip:
+    cmp ecx, 4
+    jne .next
+    cmp byte [rsp + 4], 0
+    je .next
+    mov eax, [rsi]
+    cmp eax, [rsp]
+    je .ok
+.next:
+    mov rsi, r14
+    jmp .each
+.ok:
+    clc
+    jmp .done
+.fail:
+    stc
+.done:
+    lea rsp, [rsp + 8]
+    pop r14
+    pop r13
+    pop r12
+    pop rbx
+    ret
+
+; name: x5_dns_match
+; in:   rsi = a DNS name from the certificate, ecx = its length, r12 =
+;       host, r13d = its length
+; out:  ZF=1 if they match
+; clobbers: rax, rcx, rsi, rdi
+x5_dns_match:
+    mov rdi, r12
+    cmp ecx, 2
+    jb .exact
+    cmp word [rsi], 0x2e2a          ; "*."
+    jne .exact
+    inc rsi                         ; match ".rest" against the host after
+    dec ecx                         ; its first label
+    mov eax, 1
+.dots:                              ; "*.com" would cover a whole TLD
+    cmp eax, ecx
+    jae .no
+    cmp byte [rsi + rax], '.'
+    je .wild
+    inc eax
+    jmp .dots
+.wild:
+    mov eax, r13d
+.find:
+    test eax, eax
+    jz .no
+    cmp byte [rdi], '.'
+    je .found
+    inc rdi
+    dec eax
+    jmp .find
+.found:
+    cmp rdi, r12
+    je .no                          ; an empty first label
+    cmp eax, ecx
+    jne .no
+    jmp x5_ieq
+.exact:
+    test ecx, ecx
+    jz .no
+    cmp ecx, r13d
+    jne .no
+    jmp x5_ieq
+.no:
+    test rsp, rsp                   ; ZF=0
+    ret
+
+; name: x5_ieq
+; in:   rsi, rdi = strings, ecx = length
+; out:  ZF=1 if they are equal, ASCII letters in any case
+; clobbers: rax, rcx, rsi, rdi
+x5_ieq:
+    test ecx, ecx
+    jz .ret
+    mov al, [rsi]
+    mov ah, [rdi]
+    cmp al, 'A'
+    jb .a
+    cmp al, 'Z'
+    ja .a
+    or al, 0x20
+.a:
+    cmp ah, 'A'
+    jb .b
+    cmp ah, 'Z'
+    ja .b
+    or ah, 0x20
+.b:
+    cmp al, ah
+    jne .ret
+    inc rsi
+    inc rdi
+    dec ecx
+    jmp x5_ieq
+.ret:
+    ret
+
 ; name: x5_oid_is
 ; in:   rsi = an element, rdi = an OID element: its length byte, then it
 ; out:  ZF=1 if they are the same
@@ -287,3 +507,4 @@ x5_oid_ec     db 9, 0x06, 7, 0x2a, 0x86, 0x48, 0xce, 0x3d, 2, 1
 x5_oid_p256   db 10, 0x06, 8, 0x2a, 0x86, 0x48, 0xce, 0x3d, 3, 1, 7
 x5_oid_sha256 db 10, 0x06, 8, 0x2a, 0x86, 0x48, 0xce, 0x3d, 4, 3, 2
 x5_oid_sha384 db 10, 0x06, 8, 0x2a, 0x86, 0x48, 0xce, 0x3d, 4, 3, 3
+x5_oid_san    db 5, 0x06, 3, 0x55, 0x1d, 0x11
