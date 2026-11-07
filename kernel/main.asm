@@ -157,6 +157,7 @@ selftest_pit:
 %include "net/icmp.asm"
 %include "net/udp.asm"
 %include "net/dhcp.asm"
+%include "net/dns.asm"
 %include "kernel/report.asm"
 %include "kernel/symbols.asm"
 %include "forge/lex.asm"

@@ -28,6 +28,8 @@ udp_input:
     add rdi, UDP_HDR
     cmp ecx, DHCP_CLIENT_PORT
     je dhcp_input
+    cmp ecx, DNS_CLIENT_PORT
+    je dns_input
 .drop:
     ret
 
