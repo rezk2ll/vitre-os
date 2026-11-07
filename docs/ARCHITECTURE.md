@@ -111,7 +111,7 @@ flowchart LR
 
 ## Live patching
 
-- `tools/gen.py` reads every function header at build time. Functions marked `; patchable: yes` get a slot in the jump table, and every caller goes through `call [rel jt_name]`.
+- `tools/gen.asm` reads every function header at build time. Functions marked `; patchable: yes` get a slot in the jump table, and every caller goes through `call [rel jt_name]`.
 - The source of each file holding a patchable function goes into the source area, stored on disk from LBA 2048 and loaded at boot. `edit` changes it in memory and `save` writes it back. User files (`ls`, `cat`, `rm`) live in the same area.
 - Forge, the in-kernel assembler, produces the same bytes as NASM for the [dialect](DIALECT.md) patchable modules are written in. `forge` checks that against the running kernel.
 - `patch` runs Forge on the module, writes the code into fresh pages and swaps the module's jump table slots under `cli`. Old code is never freed, since a task may still be running it.

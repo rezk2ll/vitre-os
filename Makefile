@@ -1,4 +1,5 @@
 NASM  ?= nasm
+LD    ?= ld
 PY    ?= python3
 QEMU  ?= qemu-system-x86_64
 BUILD := build
@@ -28,10 +29,17 @@ $(BUILD)/stage1.bin: boot/stage1.asm | $(BUILD)
 SRCS := $(shell find boot kernel drivers net glass lib apps forge -name '*.asm' -o -name '*.inc')
 GEN  := $(BUILD)/gen/.stamp
 
-# jump table, symbol table and source area; gen.py rewrites a file only when
-# its content changes
-$(GEN): $(SRCS) $(wildcard files/*) tools/gen.py | $(BUILD)
-	$(PY) tools/gen.py
+GENTOOL := $(BUILD)/gentool
+
+# the build generator runs on the build machine, so it is a Linux program
+$(GENTOOL): $(wildcard tools/gen*.asm) | $(BUILD)
+	$(NASM) -f elf64 -I. -o $@.o tools/gen.asm
+	$(LD) -o $@ $@.o
+
+# jump table, symbol table and source area; the generator rewrites a file
+# only when its content changes
+$(GEN): $(SRCS) $(wildcard files/*) $(GENTOOL) | $(BUILD)
+	$(GENTOOL)
 	touch $@
 
 $(BUILD)/kernel.bin: kernel/main.asm $(GEN) | $(BUILD)
