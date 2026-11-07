@@ -162,6 +162,8 @@ selftest_pit:
 %include "net/http.asm"
 %include "apps/html.asm"
 %include "apps/browser.asm"
+%include "lib/sha256.asm"
+%include "apps/crypto.asm"
 %include "kernel/report.asm"
 %include "kernel/symbols.asm"
 %include "forge/lex.asm"
