@@ -134,6 +134,7 @@ selftest_pit:
 %include "kernel/exception.asm"
 %include "drivers/pic.asm"
 %include "drivers/pit.asm"
+%include "drivers/rtc.asm"
 %include "drivers/fwcfg.asm"
 %include "lib/string.asm"
 %include "drivers/fb.asm"
