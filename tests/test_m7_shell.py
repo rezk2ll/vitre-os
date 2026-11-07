@@ -28,6 +28,30 @@ def test_commands():
         vm.wait_screen(r"^vitre>\n*$")
 
 
+def test_history_and_completion():
+    with Vm("m7_history") as vm:
+        vm.wait_for(SHELL_READY)
+        run(vm, "uptime", r"up \d+\.\d{3} s")
+        run(vm, "mem", r"pages free")
+        run(vm, "mem", r"pages free")             # a repeat is kept once
+        start = len(vm.serial())
+        vm.press("up")
+        vm.press("up")
+        vm.press("down")
+        vm.press("up")
+        vm.sendkeys("\n")
+        vm.wait_for(r"up \d+\.\d{3} s\r\nvitre> ", start=start)
+        start = len(vm.serial())
+        vm.sendkeys("upt")
+        vm.press("tab")
+        vm.sendkeys("\n")
+        vm.wait_for(r"up \d+\.\d{3} s\r\nvitre> ", start=start)
+        start = len(vm.serial())
+        vm.sendkeys("s")
+        vm.press("tab")
+        vm.wait_for(r"syms  [\s\S]*shutdown  [\s\S]*\r\nvitre> s", start=start)
+
+
 def test_reboot():
     with Vm("m7_reboot") as vm:
         vm.wait_for(SHELL_READY)
