@@ -29,6 +29,7 @@ HEADER     equ 16
 MAX_PIXELS equ 640 * 480
 MAX_CHUNK  equ 200000               ; the player fetches a chunk in one read
 CHUNK      equ 131072
+OP_SKIP    equ 0x00
 OP_RUN     equ 0x40
 OP_COPY    equ 0x80
 
@@ -82,9 +83,13 @@ _start:
 .frame:
     call read_frame
     jc .end
-    call convert
+    call dither
     call encode
     call pack
+    lea rsi, [cur]
+    lea rdi, [prev]
+    mov ecx, [pixels]
+    rep movsb
     jmp .frame
 .end:
     mov edx, [fill]
@@ -148,42 +153,101 @@ read_frame:
     stc                             ; a part frame at the end is dropped
     ret
 
-; name: convert
+; name: dither
 ; in:   rgb = a frame
-; out:  cur = its pixels as one byte each
-; clobbers: rax, rcx, rdx, rsi, rdi
-convert:
+; out:  cur = its pixels as one byte each, with a 4x4 ordered dither so
+;       flat areas keep their shade
+; clobbers: rax, rcx, rdx, rsi, rdi, r8, r9, r10
+dither:
     lea rsi, [rgb]
     lea rdi, [cur]
-    mov ecx, [pixels]
+    xor r8d, r8d                    ; y
+.row:
+    cmp r8d, [height]
+    jae .ret
+    xor r9d, r9d                    ; x
 .px:
+    cmp r9d, [width]
+    jae .next_row
+    mov eax, r8d                    ; the threshold, 0 to 15
+    and eax, 3
+    shl eax, 2
+    mov ecx, r9d
+    and ecx, 3
+    add eax, ecx
+    lea rcx, [bayer]
+    movzx r10d, byte [rcx + rax]
     movzx eax, byte [rsi]           ; red, 3 bits
-    and eax, 0xe0
-    movzx edx, byte [rsi + 1]       ; green, 3 bits
-    shr edx, 3
-    and edx, 0x1c
+    lea eax, [rax + r10 * 2]
+    shr eax, 5
+    call clamp7
+    shl eax, 5
+    mov edx, eax
+    movzx eax, byte [rsi + 1]       ; green, 3 bits
+    lea eax, [rax + r10 * 2]
+    shr eax, 5
+    call clamp7
+    shl eax, 2
+    or edx, eax
+    movzx eax, byte [rsi + 2]       ; blue, 2 bits
+    lea eax, [rax + r10 * 4]
+    shr eax, 6
+    cmp eax, 3
+    jbe .blue
+    mov eax, 3
+.blue:
     or eax, edx
-    movzx edx, byte [rsi + 2]       ; blue, 2 bits
-    shr edx, 6
-    or eax, edx
-    stosb
+    mov [rdi], al
     add rsi, 3
-    dec ecx
-    jnz .px
+    inc rdi
+    inc r9d
+    jmp .px
+.next_row:
+    inc r8d
+    jmp .row
+.ret:
+    ret
+
+clamp7:
+    cmp eax, 7
+    jbe .ret
+    mov eax, 7
+.ret:
     ret
 
 ; name: encode
-; in:   cur = this frame
+; in:   cur = this frame, prev = the one before
 ; out:  codes holds the frame's codes, code_len their length
-; clobbers: rax, rcx, rdx, rsi, rdi, r8, r9, r10
+; clobbers: rax, rcx, rdx, rsi, rdi, r8, r9
 encode:
     lea rsi, [cur]
+    lea rdx, [prev]
     lea rdi, [codes]
     xor ecx, ecx                    ; pixel
     mov r9d, [pixels]
 .code:
     cmp ecx, r9d
     jae .done
+    xor r8d, r8d                    ; n
+    mov al, [rsi + rcx]
+    cmp al, [rdx + rcx]
+    jne .changed
+.same:                              ; keep pixels while they match
+    inc r8d
+    lea r10d, [rcx + r8]
+    cmp r10d, r9d
+    jae .skip
+    cmp r8d, 64
+    jae .skip
+    mov al, [rsi + r10]
+    cmp al, [rdx + r10]
+    je .same
+.skip:
+    lea eax, [r8 - 1 + OP_SKIP]
+    stosb
+    add ecx, r8d
+    jmp .code
+.changed:
     call run_length
     cmp r8d, 3
     jb .copy
@@ -193,7 +257,7 @@ encode:
     stosb
     add ecx, r8d
     jmp .code
-.copy:                              ; copy bytes up to a run
+.copy:                              ; copy bytes up to a match or a run
     xor r8d, r8d
 .copy_more:
     inc r8d
@@ -202,6 +266,9 @@ encode:
     jae .copy_out
     cmp r8d, 64
     jae .copy_out
+    mov al, [rsi + r10]
+    cmp al, [rdx + r10]
+    je .copy_out
     push rcx
     mov ecx, r10d
     push r8
@@ -331,6 +398,7 @@ fail:
     syscall
 
 section .data
+bayer       db 0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5
 msg_usage   db "usage: vivenc width height fps [chunk] < rgb24 frames > video.viv", 10
 msg_usage_len equ $ - msg_usage
 msg_big     db "vivenc: a frame does not fit in a chunk; use a bigger chunk", 10
@@ -349,5 +417,6 @@ fill     resd 1
 code_len resd 1
 rgb      resb MAX_PIXELS * 3
 cur      resb MAX_PIXELS
+prev     resb MAX_PIXELS
 codes    resb MAX_PIXELS + MAX_PIXELS / 64 + 64
 outbuf   resb MAX_CHUNK
