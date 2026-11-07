@@ -166,6 +166,7 @@ selftest_pit:
 %include "net/http.asm"
 %include "apps/html.asm"
 %include "apps/browser.asm"
+%include "apps/desktop.asm"
 %include "lib/sha256.asm"
 %include "lib/hmac.asm"
 %include "lib/chacha20.asm"

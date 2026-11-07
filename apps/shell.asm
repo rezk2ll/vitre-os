@@ -420,6 +420,7 @@ shell_commands:
     shell_command "mouse", cmd_mouse, "the mouse position and buttons"
     shell_command "reboot", cmd_reboot, "restart the machine"
     shell_command "shutdown", cmd_shutdown, "power the machine off"
+    shell_command "desktop", cmd_desktop, "the desktop: click an app to open it"
     dq 0
 
 shell_null_idt dw 0
