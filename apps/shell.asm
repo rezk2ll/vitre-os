@@ -381,6 +381,7 @@ shell_commands:
     shell_command "tcp", cmd_tcp, "open and close a connection: tcp host port"
     shell_command "get", cmd_get, "fetch a page and print it raw: get http://host/path"
     shell_command "view", cmd_view, "fetch a page and print it as text: view http://host/path"
+    shell_command "browse", cmd_browse, "open a page full screen: browse http://host/path"
     shell_command "forge", forge_check, "reassemble the patchable modules"
     shell_command "edit", cmd_edit, "edit a module: edit <module>"
     shell_command "patch", cmd_patch, "patch a module live: patch <module>"
