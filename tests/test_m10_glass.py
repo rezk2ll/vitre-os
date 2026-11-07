@@ -137,10 +137,13 @@ def test_breakpoint_pauses_task():
         pos = vm.wait_for(SHELL_READY).end()
         out, pos = run(vm, "spin", pos)
         task = re.search(r"started spin, task (\d+)", out).group(1)
+        before = pos
         out, pos = run(vm, f"break {loop:#x}", pos)
         if f"set at {loop:016x}" not in out:
             raise TestFailure(f"break: {out!r}")
-        pos = vm.wait_for(rf"\[break\] task {task} hit {loop:016x}, paused", start=pos).end()
+        # the hit can print before the prompt comes back
+        pos = max(pos, vm.wait_for(rf"\[break\] task {task} hit {loop:016x}, paused",
+                                   start=before).end())
         out, pos = run(vm, f"step {task}", pos)
         if f"rip {loop + 7:016x}" not in out:
             raise TestFailure(f"step after the breakpoint: {out!r}")
