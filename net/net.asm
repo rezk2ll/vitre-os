@@ -84,6 +84,7 @@ cmd_net:
 net_ip      dd 0x0f02000a           ; 10.0.2.15, QEMU's user network
 net_mask    dd 0x00ffffff           ; 255.255.255.0
 net_gateway dd 0x0202000a           ; 10.0.2.2
+net_dns     dd 0x0302000a           ; 10.0.2.3
 
 net_msg_none      db "[net] no network card", 10, 0
 net_msg_mac       db "[net] mac ", 0

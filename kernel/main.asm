@@ -65,6 +65,10 @@ kernel_entry:
     sti
     lea rdi, [rel msg_interrupts]
     call kputs
+    cmp byte [rel net_ready], 0     ; net_init already said there is no card
+    je .no_net
+    call cmd_dhcp
+.no_net:
 
     call kernel_selftests
     jmp shell_run
@@ -151,6 +155,8 @@ selftest_pit:
 %include "net/arp.asm"
 %include "net/ipv4.asm"
 %include "net/icmp.asm"
+%include "net/udp.asm"
+%include "net/dhcp.asm"
 %include "kernel/report.asm"
 %include "kernel/symbols.asm"
 %include "forge/lex.asm"
