@@ -14,10 +14,6 @@ The build and CI use NASM 2.16.01, the Ubuntu 24.04 package. The in-OS assembler
 
 Each test boots a private copy of `build/vitre.img` so disk writes (patch persistence) cannot leak between tests. COM1 goes to stdio, QMP to a unix socket (screendump, sendkey, HMP commands). `isa-debug-exit` at port 0xf4 lets the kernel end a run with an exit code. Networking is off unless a test asks for it.
 
-## D4. No repo CLAUDE.md
-
-The brief asks to read `CLAUDE.md` at session start. Agent configuration is kept outside the repo, so `docs/BRIEF.md` holds the spec and `docs/STATUS.md` the handoff note.
-
 ## D5. Boot layout
 
 - Disk: stage 1 at LBA 0, stage 2 in LBA 1 to 32, kernel from LBA 64. `boot/layout.inc` is the single source for these numbers.

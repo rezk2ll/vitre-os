@@ -1,5 +1,27 @@
 # Architecture
 
+## What is inside
+
+- Boot: a 512-byte MBR, then a stage 2 that reads the E820 map, sets a 1024x768 VBE mode and enters long mode.
+- Kernel: interrupts, PIT timer, a bitmap page allocator, a first-fit heap and a preemptive round-robin scheduler.
+- Drivers: serial, PS/2 keyboard (AZERTY and QWERTY) and mouse, VBE framebuffer, RTC, ATA PIO, PCI and an Intel e1000 network card.
+- Network: Ethernet, ARP, IPv4, ICMP, UDP, DHCP, DNS, TCP and HTTP with redirects.
+- Crypto: SHA-256, HMAC, HKDF, ChaCha20-Poly1305, X25519, P-256 ECDSA and X.509 parsing, behind a TLS 1.3 client.
+- Apps: the desktop, a shell, a disassembler, the Glass views, the editor and a browser with headings, links, scrolling and history.
+
+## Repo layout
+
+- `boot`: stage 1 and stage 2
+- `kernel`: memory, interrupts, scheduler, symbols
+- `drivers`: serial, timer, keyboard, mouse, framebuffer, disk, PCI, e1000
+- `net`: the network stack, TLS and X.509
+- `lib`: strings and crypto primitives
+- `forge`: the assembler, the editor and the patcher
+- `glass`: the font, console, pointer, disassembler, debugger views and pixel provenance
+- `apps`: the desktop, the shell, the browser and the crypto command
+- `files`: the user files put on the disk at build time
+- `tests`: the Python harness that drives QEMU
+
 ## Disk image
 
 - LBA 0: stage 1 (MBR)
@@ -65,7 +87,7 @@ flowchart LR
 ## Screen
 
 - `drivers/fb.asm`: framebuffer primitives (fill, glyph, scroll a rectangle), 32 bpp `0x00RRGGBB`.
-- `glass/console.asm`: a console is a struct (origin, size in cells, cursor, colours) drawing on the 8x16 grid. The kernel log owns a full-screen one; Glass panes will each own one.
+- `glass/console.asm`: a console is a struct (origin, size in cells, cursor, colours) drawing on the 8x16 grid. The kernel log owns a full-screen one, and each Glass pane owns one.
 - `kputc` writes every byte to COM1 and, once the framebuffer is up, to the kernel console.
 - `drivers/keyboard.asm`: IRQ 1 decodes scancodes into key codes in a ring buffer read by `kbd_getc`.
 
@@ -90,7 +112,8 @@ flowchart LR
 ## Live patching
 
 - `tools/gen.py` reads every function header at build time. Functions marked `; patchable: yes` get a slot in the jump table, and every caller goes through `call [rel jt_name]`.
-- The source of each file holding a patchable function goes into the source area, stored on disk from LBA 2048 and loaded at boot. `edit` changes it in memory and `save` writes it back.
+- The source of each file holding a patchable function goes into the source area, stored on disk from LBA 2048 and loaded at boot. `edit` changes it in memory and `save` writes it back. User files (`ls`, `cat`, `rm`) live in the same area.
+- Forge, the in-kernel assembler, produces the same bytes as NASM for the [dialect](DIALECT.md) patchable modules are written in. `forge` checks that against the running kernel.
 - `patch` runs Forge on the module, writes the code into fresh pages and swaps the module's jump table slots under `cli`. Old code is never freed, since a task may still be running it.
 - `forge/guard.asm`: a CPU exception inside the new code within 10 s of the patch puts the old slots back and resumes the shell.
 
@@ -109,6 +132,7 @@ flowchart LR
 - `kernel/debug.asm` pauses a task by having the scheduler skip it, its frame kept as saved. `step` sets the trap flag in that frame, and the `#DB` after one instruction pauses it again.
 - `kernel/breakpoint.asm` writes `int3` over an instruction and pauses the task that hits it.
 - `glass/view.asm` redraws a task's frame, the disassembly around RIP, its stack and memory while it runs, highlighting registers that changed.
+- Pixel provenance: every framebuffer draw records, per pixel, the task and up to six return addresses found by walking the stack. `why <x> <y>` prints that chain, and F12 in any app freezes the screen so a click shows it beside the pointer.
 
 ## Network
 
@@ -136,4 +160,4 @@ flowchart BT
 
 - The handshake keys come from the X25519 secret through HKDF. Then the client checks the server's Finished and sends its own.
 - The leaf certificate is parsed with `net/x509.asm`. When its key is P-256, the CertificateVerify signature is checked with `lib/p256.asm` and a bad one fails the handshake.
-- The certificate chain is not verified yet.
+- A page counts as verified when the CertificateVerify signature holds, the certificate names the host, and the chain ends at a key added with `trust`.
