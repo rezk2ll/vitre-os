@@ -1,4 +1,5 @@
-; Linear framebuffer set up by stage 2 (32 bpp, 0x00RRGGBB).
+; Linear framebuffer set up by stage 2 (32 bpp, 0x00RRGGBB). Each writer
+; lifts the mouse pointer with interrupts off (glass/cursor.asm).
 
 ; name: fb_init
 ; in:   boot info filled by stage 2
@@ -26,6 +27,14 @@ fb_init:
 ; out:  none
 ; clobbers: rax, rcx, rdx, rdi, rsi, r9, r10
 fb_fill_rect:
+    pushfq
+    cli
+    call cursor_off
+    call .body
+    call cursor_on
+    popfq
+    ret
+.body:
     mov r9, rdx
     mov r10, rcx
     mov rax, [rel fb_pitch]
@@ -50,6 +59,14 @@ fb_fill_rect:
 ; out:  none; characters outside the font draw as '?'
 ; clobbers: rax, rcx, rdx, rdi, rsi, r9, r10, r11
 fb_draw_glyph:
+    pushfq
+    cli
+    call cursor_off
+    call .body
+    call cursor_on
+    popfq
+    ret
+.body:
     sub edx, FONT_FIRST
     cmp edx, FONT_LAST - FONT_FIRST
     jbe .known
@@ -87,6 +104,14 @@ fb_draw_glyph:
 ;       lines keep their old content (callers clear them)
 ; clobbers: rax, rcx, rdx, rdi, rsi, r9, r10, r11
 fb_scroll_rect:
+    pushfq
+    cli
+    call cursor_off
+    call .body
+    call cursor_on
+    popfq
+    ret
+.body:
     mov r9, rdx
     mov r10, rcx
     sub r10, r8                     ; rows to copy

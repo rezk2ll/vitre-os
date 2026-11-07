@@ -178,8 +178,10 @@ mouse_irq:
     inc ecx
     cmp ecx, 3
     jb .keep
-    xor ecx, ecx
     call mouse_packet_done
+    call cursor_off
+    call cursor_on
+    xor ecx, ecx
 .keep:
     mov [rel mouse_have], cl
 .eoi:
