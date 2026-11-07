@@ -13,6 +13,7 @@ TASK_SIZE   equ 48
 TASK_FREE   equ 0
 TASK_READY  equ 1
 TASK_DEAD   equ 2
+TASK_PAUSED equ 3                   ; skipped by the scheduler (kernel/debug.asm)
 
 MAX_TASKS   equ 32
 TASK_STACK_PAGES equ 4
