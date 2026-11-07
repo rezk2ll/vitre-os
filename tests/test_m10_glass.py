@@ -47,3 +47,24 @@ def test_single_step_advances_rip():
         out, pos = run(vm, f"step {task}", pos)
         if "not a task in that state" not in out:
             raise TestFailure(f"step on a running task: {out!r}")
+
+
+def test_breakpoint_pauses_task():
+    loop = map_address("spin_task.loop")
+    with Vm("m10_break") as vm:
+        pos = vm.wait_for(SHELL_READY).end()
+        out, pos = run(vm, "spin", pos)
+        task = re.search(r"started spin, task (\d+)", out).group(1)
+        out, pos = run(vm, f"break {loop:#x}", pos)
+        if f"set at {loop:016x}" not in out:
+            raise TestFailure(f"break: {out!r}")
+        pos = vm.wait_for(rf"\[break\] task {task} hit {loop:016x}, paused", start=pos).end()
+        out, pos = run(vm, f"step {task}", pos)
+        if f"rip {loop + 7:016x}" not in out:
+            raise TestFailure(f"step after the breakpoint: {out!r}")
+        out, pos = run(vm, "break spin_task", pos)
+        if "set at" not in out:
+            raise TestFailure(f"break on a label: {out!r}")
+        out, pos = run(vm, "break 0x10", pos)
+        if "not in kernel code" not in out:
+            raise TestFailure(f"break outside the kernel: {out!r}")
