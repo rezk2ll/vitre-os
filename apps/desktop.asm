@@ -1,7 +1,8 @@
 ; Desktop: `desktop` takes the screen and shows a bar with the clock and an
-; icon per app, in columns from the top left. The icon under the pointer is
-; outlined. A click opens it, and the desktop comes back when the app ends.
-; q or Esc return to the shell.
+; icon per app and per user file, in columns from the top left. The icon
+; under the pointer is outlined. A click opens it: an app starts, a program
+; runs, any other file opens in the editor, and the desktop comes back when
+; it ends. q or Esc return to the shell.
 
 DT_BAR_H    equ 24
 DT_MARGIN   equ 16
@@ -19,6 +20,8 @@ DT_NONE     equ 0xff
 DT_BAR_BG   equ 0x000f141e
 DT_TEXT     equ 0x00eceff4
 DT_DIM      equ 0x009aa5b8
+DT_PROGRAM  equ 0x00ebcb8b
+DT_DOC      equ 0x0081a1c1
 
 %macro dt_app 5                     ; label, action, argument, colour, letter
     dq %1, %2, %3
@@ -90,14 +93,90 @@ cmd_desktop:
 
 ; name: dt_build
 ; in:   none
-; out:  dt_items holds the apps; dt_count set
-; clobbers: rcx, rdi, rsi
+; out:  dt_items holds the apps, then an icon per user file; dt_count set
+; clobbers: rax, rcx, rdx, rdi, rsi
 dt_build:
     lea rsi, [rel dt_apps]
     lea rdi, [rel dt_items]
     mov ecx, DT_APPS * DT_ENTRY
     rep movsb
     mov dword [rel dt_count], DT_APPS
+    mov rsi, [rel src_area]
+    test rsi, rsi
+    jz .ret
+    mov ecx, [rsi + SRC_HDR_COUNT]
+    add rsi, SRC_DIR
+.file:
+    test ecx, ecx
+    jz .ret
+    cmp dword [rel dt_count], DT_MAX
+    jae .ret
+    test dword [rsi + SRC_DIR_FLAGS], SRC_FILE
+    jz .next
+    mov eax, [rel dt_count]
+    imul eax, eax, DT_ENTRY
+    lea rdi, [rel dt_items]
+    add rdi, rax
+    mov [rdi], rsi                  ; an entry starts with its name
+    lea rax, [rel dt_open]
+    mov [rdi + 8], rax
+    mov [rdi + 16], rsi
+    mov dword [rdi + 24], DT_DOC
+    push rdi
+    mov rdi, rsi
+    call str_skip
+    pop rdi
+    cmp dword [rax - 5], ".asm"
+    jne .letter
+    mov dword [rdi + 24], DT_PROGRAM
+.letter:
+    movzx eax, byte [rsi]           ; the name's first letter, upper case
+    lea edx, [rax - 'a']
+    cmp edx, 'z' - 'a'
+    ja .upper
+    sub eax, 'a' - 'A'
+.upper:
+    mov [rdi + 28], al
+    inc dword [rel dt_count]
+.next:
+    add rsi, SRC_DIR_ENTRY
+    dec ecx
+    jmp .file
+.ret:
+    ret
+
+; name: dt_open
+; in:   rdi = file name
+; out:  a .asm file run, then a key or click awaited; any other file edited
+; clobbers: caller-saved
+dt_open:
+    push rbx
+    mov rsi, rdi
+    lea rdi, [rel dt_name]          ; the source area may move under the app
+    mov rbx, rdi
+    mov ecx, SRC_NAME_MAX + 1
+    rep movsb
+    mov rdi, rbx
+    call str_skip
+    cmp dword [rax - 5], ".asm"
+    jne .edit
+    mov rdi, rbx
+    call cmd_run
+    lea rdi, [rel dt_msg_back]
+    call kputs
+    call mouse_click
+.wait:
+    call kbd_poll
+    jnz .done
+    call mouse_click
+    jnc .done
+    call task_yield
+    jmp .wait
+.edit:
+    mov rdi, rbx
+    call cmd_edit
+.done:
+    pop rbx
     ret
 
 ; name: dt_draw
@@ -517,6 +596,7 @@ dt_msg_name      db "Vitre", 0
 dt_msg_hint      db "click an icon to open it; q goes back to the shell"
 dt_msg_hint_len  equ $ - dt_msg_hint
                  db 0
+dt_msg_back      db 10, "[desktop] press a key or click to go back", 10, 0
 dt_clock_layout  db "####-##-## ##:##", 0
 dt_clock_len     equ $ - dt_clock_layout - 1
 
@@ -524,6 +604,7 @@ section .bss
 dt_empty      resb 1
 dt_hover      resb 1                ; the outlined icon, DT_NONE for none
 dt_clock_text resb 32
+dt_name       resb SRC_NAME_MAX + 1
 alignb 8
 dt_count      resd 1
 alignb 8

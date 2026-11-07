@@ -6,7 +6,8 @@ from test_mouse import move, pixel
 BROWSER = (0x5e, 0x81, 0xac)
 OUTLINE = (0xec, 0xef, 0xf4)
 ROWS = 7                                # icons in a column on a 768-row screen
-ICONS = ["Terminal", "Browser", "Glass", "Files", "Monitor", "Reboot", "Shut down"]
+ICONS = ["Terminal", "Browser", "Glass", "Files", "Monitor", "Reboot", "Shut down",
+         "cube.asm", "guess.asm", "hello.asm", "snake.asm", "welcome.txt"]
 
 
 def corner(name):
@@ -46,7 +47,7 @@ def wait_desktop(vm):
     wait_pixel(vm, x + 6, y + 32, BROWSER)
 
 
-def test_desktop_opens_apps():
+def test_desktop_opens_apps_and_files():
     with Vm("desktop", net=True) as vm:
         pos = vm.wait_for(SHELL_READY).end()
         vm.sendkeys("desktop\n")
@@ -63,6 +64,15 @@ def test_desktop_opens_apps():
         open_icon(vm, "Files")
         vm.wait_screen(r"Vitre files")
         vm.sendkeys("q")
+        wait_desktop(vm)
+        open_icon(vm, "hello.asm")
+        vm.wait_screen(r"Hello, world!")
+        vm.wait_screen(r"press a key or click to go back")
+        vm.sendkeys(" ")
+        wait_desktop(vm)
+        open_icon(vm, "welcome.txt")
+        pos = vm.wait_for(r"\[edit\] welcome\.txt: opened", start=pos).end()
+        vm.ctrl("q")
         wait_desktop(vm)
         open_icon(vm, "Terminal")
         vm.wait_for(r"vitre> ", start=pos)
