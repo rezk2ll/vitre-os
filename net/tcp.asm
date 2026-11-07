@@ -1,5 +1,6 @@
-; TCP: one client connection at a time. Sequence numbers are kept in host
-; order.
+; TCP: one client connection at a time. Received data lands in order in
+; tcp_rx; anything out of order is dropped and acknowledged again so the
+; peer resends it. Sequence numbers are kept in host order.
 
 TCP_SRC     equ 0
 TCP_DST     equ 2
@@ -13,9 +14,11 @@ TCP_HDR     equ 20
 TCP_F_FIN   equ 1
 TCP_F_SYN   equ 2
 TCP_F_RST   equ 4
+TCP_F_PSH   equ 8
 TCP_F_ACK   equ 16
 IP_PROTO_TCP equ 6
 TCP_MSS     equ 1024
+TCP_RX_SIZE equ 256 * 1024
 TCP_WAIT_MS equ 1000
 TCP_TRIES   equ 5
 
@@ -70,7 +73,13 @@ tcp_segment:
     mov [rdi + TCP_ACK], eax
     mov byte [rdi + TCP_OFF], (TCP_HDR / 4) << 4
     mov [rdi + TCP_FLAGS], bl
-    mov word [rdi + TCP_WIN], 0xffff
+    mov eax, TCP_RX_SIZE            ; window: the room left in tcp_rx
+    sub eax, [rel tcp_rx_len]
+    mov ecx, 0xffff
+    cmp eax, ecx
+    cmova eax, ecx
+    rol ax, 8
+    mov [rdi + TCP_WIN], ax
     mov dword [rdi + TCP_SUM], 0    ; and the urgent pointer
     add rdi, TCP_HDR
     mov rsi, r12
@@ -165,10 +174,24 @@ tcp_input:
     bswap eax
     cmp eax, [rel tcp_rcv_nxt]
     jne .out_of_order
-    test r12d, r12d                 ; data is not taken: the peer resends it
-    jnz .done
+    mov ecx, TCP_RX_SIZE
+    sub ecx, [rel tcp_rx_len]
+    cmp r12d, ecx
+    ja .ack                         ; no room: the peer resends later
+    lea rsi, [rbx + r13]
+    lea rdi, [rel tcp_rx]
+    mov eax, [rel tcp_rx_len]
+    add rdi, rax
+    mov ecx, r12d
+    rep movsb
+    add [rel tcp_rx_len], r12d
+    add [rel tcp_rcv_nxt], r12d
     test byte [rbx + TCP_FLAGS], TCP_F_FIN
-    jz .done
+    jnz .fin
+    test r12d, r12d
+    jz .done                        ; a bare ACK needs no answer
+    jmp .ack
+.fin:
     inc dword [rel tcp_rcv_nxt]
     mov byte [rel tcp_peer_closed], 1
     jmp .ack
@@ -236,6 +259,7 @@ tcp_connect:
     mov [rel tcp_snd_una], eax
     mov [rel tcp_snd_nxt], eax
     mov dword [rel tcp_rcv_nxt], 0
+    mov dword [rel tcp_rx_len], 0
     mov byte [rel tcp_peer_closed], 0
     mov byte [rel tcp_state], TCP_SYN_SENT
     mov ebx, TCP_TRIES
@@ -275,6 +299,55 @@ tcp_close:
 .closed:
     mov byte [rel tcp_state], TCP_CLOSED
     add rsp, 8
+    ret
+
+; name: tcp_write
+; in:   rsi = data, ecx = length; interrupts on
+; out:  everything sent and acknowledged, one TCP_MSS segment at a time;
+;       CF=1 if a segment went unacknowledged TCP_TRIES times or the
+;       connection was reset
+; clobbers: caller-saved
+tcp_write:
+    push rbx
+    push r12
+    push r13
+    push r14
+    sub rsp, 8
+    mov r12, rsi
+    mov r13d, ecx
+.segment:
+    test r13d, r13d
+    jz .done                        ; CF=0 from the test
+    mov ebx, TCP_MSS
+    cmp r13d, ebx
+    cmovb ebx, r13d
+    mov r14d, TCP_TRIES
+.send:
+    mov edx, TCP_F_PSH | TCP_F_ACK
+    mov rsi, r12
+    mov ecx, ebx
+    call tcp_segment
+    add [rel tcp_snd_nxt], ebx
+    call tcp_wait_acked
+    jnc .next
+    cmp byte [rel tcp_state], TCP_CLOSED
+    je .fail
+    sub [rel tcp_snd_nxt], ebx
+    dec r14d
+    jnz .send
+.fail:
+    stc
+    jmp .done
+.next:
+    add r12, rbx
+    sub r13d, ebx
+    jmp .segment
+.done:
+    add rsp, 8
+    pop r14
+    pop r13
+    pop r12
+    pop rbx
     ret
 
 ; name: cmd_tcp
@@ -327,9 +400,11 @@ cmd_tcp:
     call kputs
     mov rdi, rbx
     call kputs
-    mov edi, 10
-    call kputc
-    jmp .done
+    lea rdi, [rel tcp_msg_silent]
+    cmp byte [rel tcp_peer_closed], 0
+    je .print
+    lea rdi, [rel tcp_msg_reset]
+    jmp .print
 .usage:
     lea rdi, [rel tcp_msg_usage]
     jmp .print
@@ -346,6 +421,8 @@ cmd_tcp:
 tcp_msg_connected db "[tcp] connected to ", 0
 tcp_msg_refused   db "[tcp] no connection to ", 0
 tcp_msg_usage     db "usage: tcp host port", 10, 0
+tcp_msg_silent    db ": no answer", 10, 0
+tcp_msg_reset     db ": reset", 10, 0
 
 section .bss
 alignb 8
@@ -356,7 +433,10 @@ tcp_local_port  resd 1
 tcp_snd_una     resd 1
 tcp_snd_nxt     resd 1
 tcp_rcv_nxt     resd 1
+tcp_rx_len      resd 1
 tcp_next_port   resw 1
 tcp_state       resb 1
 tcp_peer_closed resb 1
+alignb 4096
+tcp_rx          resb TCP_RX_SIZE
 section .text
