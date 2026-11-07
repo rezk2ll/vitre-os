@@ -1,5 +1,6 @@
 ; Linear framebuffer set up by stage 2 (32 bpp, 0x00RRGGBB). Each writer
-; lifts the mouse pointer with interrupts off (glass/cursor.asm).
+; lifts the mouse pointer with interrupts off (glass/cursor.asm) and records
+; who drew in the provenance map (glass/provenance.asm).
 
 ; name: fb_init
 ; in:   boot info filled by stage 2
@@ -29,6 +30,8 @@ fb_init:
 fb_fill_rect:
     pushfq
     cli
+    lea rax, [rsp + 8]
+    call prov_rect
     call cursor_off
     call .body
     call cursor_on
@@ -61,6 +64,14 @@ fb_fill_rect:
 fb_draw_glyph:
     pushfq
     cli
+    push rdx
+    push rcx
+    mov edx, 8
+    mov ecx, FONT_HEIGHT
+    lea rax, [rsp + 24]
+    call prov_rect
+    pop rcx
+    pop rdx
     call cursor_off
     call .body
     call cursor_on
@@ -106,6 +117,7 @@ fb_draw_glyph:
 fb_scroll_rect:
     pushfq
     cli
+    call prov_scroll
     call cursor_off
     call .body
     call cursor_on
