@@ -13,6 +13,7 @@ KEY_HOME  equ 0x86
 KEY_END   equ 0x87
 KEY_DEL   equ 0x88
 KEY_F1    equ 0x90                  ; F1-F10 are 0x90-0x99
+KEY_F12   equ 0x9b                  ; taken by inspect mode (glass/inspect.asm)
 KEY_ESC   equ 27
 
 KBD_BUF_SIZE equ 64                 ; power of two
@@ -93,6 +94,11 @@ kbd_scancode:
     add eax, KEY_F1 - 0x3b
     jmp kbd_push
 .iso_key:
+    cmp eax, 0x58
+    jne .iso
+    mov eax, KEY_F12
+    jmp kbd_push
+.iso:
     cmp eax, 0x56                   ; the extra key left of Z on ISO boards
     jne .ignore
     mov eax, KBD_MAP_ISO
@@ -210,7 +216,8 @@ kbd_push:
 
 ; name: kbd_poll
 ; in:   none
-; out:  eax = key code, ZF=1 and eax = 0 if no key is waiting
+; out:  eax = key code, ZF=1 and eax = 0 if no key is waiting; F12 runs
+;       inspect mode over whatever app is polling and reads as no key
 ; clobbers: rcx, rdx
 kbd_poll:
     cli
@@ -223,9 +230,11 @@ kbd_poll:
     inc ecx
     and ecx, KBD_BUF_SIZE - 1
     mov [rel kbd_tail], ecx
-    test eax, eax
 .done:
     sti
+    cmp eax, KEY_F12
+    je insp_hotkey
+    test eax, eax
     ret
 
 ; name: kbd_getc
@@ -236,10 +245,14 @@ kbd_getc:
     cli
     mov ecx, [rel kbd_tail]
     cmp ecx, [rel kbd_head]
-    jne kbd_poll
+    jne .key
     sti                             ; sti; hlt cannot lose an IRQ in between
     hlt
     jmp kbd_getc
+.key:
+    call kbd_poll
+    jz kbd_getc
+    ret
 
 ; Layout maps, indexed by scancode 0x00-0x39 plus KBD_MAP_ISO for scancode
 ; 0x56. Each layout has a plain, a Shift and an AltGr map, in that order.
