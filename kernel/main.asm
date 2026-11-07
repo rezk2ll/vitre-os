@@ -148,6 +148,7 @@ selftest_pit:
 %include "drivers/e1000.asm"
 %include "net/net.asm"
 %include "net/eth.asm"
+%include "net/arp.asm"
 %include "kernel/report.asm"
 %include "kernel/symbols.asm"
 %include "forge/lex.asm"
