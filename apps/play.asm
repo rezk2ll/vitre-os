@@ -2,7 +2,9 @@
 ; over HTTP or HTTPS, one range request a chunk. A task fetches the next
 ; chunk while this one plays, into the other of two buffers: chunk k always
 ; lands in buffer k & 1. The picture is scaled up by a whole number to fill
-; the screen. q or Esc stop it.
+; the screen. A frame's sound is queued on the sound card as it is decoded,
+; and the pictures wait PLAY_LEAD frames so they show as it plays. q or Esc
+; stop it.
 
 PLAY_CHUNK_MAX   equ 200000         ; with its headers, fits tcp_rx
 PLAY_CHUNK_PAGES equ (PLAY_CHUNK_MAX + 4095) / 4096
@@ -10,7 +12,14 @@ PLAY_PIXELS_MAX  equ 640 * 480
 PLAY_FRAME_PAGES equ PLAY_PIXELS_MAX / 4096
 PLAY_SCALE_MAX   equ 8
 PLAY_ROW_PAGES   equ PLAY_SCALE_MAX * 4 ; that many screen rows of 4096 pixels
-PLAY_PAGES       equ PLAY_CHUNK_PAGES * 2 + PLAY_FRAME_PAGES + PLAY_ROW_PAGES
+PLAY_RATE        equ 16000          ; sound samples a second, 8-bit mono
+PLAY_FPS_SOUND   equ 4              ; so a frame has at most 4000 samples
+PLAY_STRETCH     equ AC97_RATE / PLAY_RATE
+PLAY_SLOT        equ PLAY_RATE / PLAY_FPS_SOUND * PLAY_STRETCH * 4
+PLAY_SLOTS       equ 8              ; frames of sound queued at most
+PLAY_LEAD        equ 2
+PLAY_SLOT_PAGES  equ (PLAY_SLOT * PLAY_SLOTS + 4095) / 4096
+PLAY_PAGES       equ PLAY_CHUNK_PAGES * 2 + PLAY_FRAME_PAGES + PLAY_ROW_PAGES + PLAY_SLOT_PAGES
 PLAY_HEADER      equ 16
 PLAY_BUSY        equ 1              ; a buffer's state
 PLAY_READY       equ 2
@@ -49,6 +58,9 @@ cmd_play:
     mov [rel play_frame], rax
     add rax, PLAY_FRAME_PAGES * 4096
     mov [rel play_row], rax
+    add rax, PLAY_ROW_PAGES * 4096
+    mov [rel play_slots], rax
+    mov dword [rel play_slot], 0
     mov word [rel play_state], 0
     mov dword [rel play_chunk], PLAY_CHUNK_MAX
     xor edi, edi                    ; chunk 0, here: it says the rest
@@ -65,6 +77,23 @@ cmd_play:
     mov r13d, PLAY_HEADER           ; the next frame in it
     mov r14, [rel timer_ticks]      ; when frame 0 was due
     xor r15d, r15d                  ; frames shown
+    cmp dword [rel play_rate], 0
+    je .frame
+    mov ebx, PLAY_LEAD
+.lead:
+    xor edi, edi
+    mov esi, PLAY_RATE
+    xor edx, edx
+    mov eax, esi
+    div dword [rel play_fps]
+    mov esi, eax
+    call play_sound
+    mov eax, 1000
+    xor edx, edx
+    div dword [rel play_fps]
+    add r14, rax
+    dec ebx
+    jnz .lead
 .frame:
     call kbd_poll
     jz .next
@@ -76,6 +105,7 @@ cmd_play:
     lea rax, [rel play_len]
     mov ecx, [rax + r12 * 4]
     lea eax, [r13 + 4]
+    add eax, [rel play_extra]
     cmp eax, ecx
     ja .chunk
     lea rax, [rel play_buf]
@@ -84,11 +114,32 @@ cmd_play:
     mov edx, [rsi]
     test edx, edx
     jz .chunk
+    add rsi, 4
+    xor ebx, ebx                    ; sound samples
+    cmp dword [rel play_rate], 0
+    je .sized
+    movzx ebx, word [rsi]
+    add rsi, 2
+    cmp ebx, PLAY_RATE / PLAY_FPS_SOUND
+    ja .chunk                       ; more than a slot holds: not a frame
+.sized:
     lea rax, [r13 + 4 + rdx]
+    add eax, [rel play_extra]
+    add rax, rbx
     cmp rax, rcx
     ja .chunk
     mov r13d, eax
-    add rsi, 4
+    test ebx, ebx
+    jz .picture
+    push rsi
+    push rdx
+    mov rdi, rsi
+    mov esi, ebx
+    call play_sound
+    pop rdx
+    pop rsi
+    add rsi, rbx
+.picture:
     call play_decode
     mov eax, r15d                   ; wait for its time
     imul eax, eax, 1000
@@ -122,13 +173,18 @@ cmd_play:
     jmp .wait
 .waited:
     cmp eax, PLAY_READY
-    jne .stop                       ; the end of the video
+    jne .end                        ; the end of the video
     xor r13d, r13d
     mov edi, [rel play_next]        ; the chunk after this one, into the
     call play_fetch_start           ; buffer just played
     jmp .frame
+.end:
+    call task_yield                 ; the last frames' sound
+    call ac97_busy
+    jc .end
 .stop:
     call play_wait
+    call ac97_stop
     call shell_clear_screen
     lea rdi, [rel play_msg_done]
     call kputs
@@ -276,6 +332,17 @@ play_header:
     test eax, eax
     jz .bad
     mov [rel play_fps], eax
+    mov dword [rel play_extra], 0
+    movzx ecx, word [rsi + 10]
+    mov [rel play_rate], ecx
+    test ecx, ecx
+    jz .chunk
+    cmp ecx, PLAY_RATE
+    jne .bad
+    cmp eax, PLAY_FPS_SOUND
+    jb .bad
+    mov dword [rel play_extra], 2   ; a frame's count of samples
+.chunk:
     mov eax, [rsi + 12]
     cmp eax, 1024
     jb .bad
@@ -290,6 +357,48 @@ play_header:
     ret
 .bad:
     stc
+    ret
+
+; name: play_sound
+; in:   rdi = esi samples, unsigned 8-bit at PLAY_RATE; rdi = 0 for silence
+; out:  them stretched to the card's rate and queued in the next slot;
+;       nothing without a sound card
+; clobbers: caller-saved
+play_sound:
+    cmp byte [rel ac97_ready], 0
+    je .ret
+    mov eax, [rel play_slot]
+    and eax, PLAY_SLOTS - 1
+    imul eax, eax, PLAY_SLOT
+    mov r8, [rel play_slots]
+    add r8, rax
+    mov r9, r8
+    mov ecx, esi
+    test ecx, ecx
+    jz .ret
+.sample:
+    xor eax, eax
+    test rdi, rdi
+    jz .stretch
+    movzx eax, byte [rdi]
+    inc rdi
+    sub eax, 128
+    shl eax, 8
+.stretch:
+    mov edx, eax                    ; the same value left and right, in
+    shl edx, 16                     ; PLAY_STRETCH (3) frames
+    mov dx, ax
+    mov [r9], edx
+    mov [r9 + 4], edx
+    mov [r9 + 8], edx
+    add r9, PLAY_STRETCH * 4
+    dec ecx
+    jnz .sample
+    mov rdi, r8
+    imul esi, esi, PLAY_STRETCH
+    call ac97_queue
+    inc dword [rel play_slot]
+.ret:
     ret
 
 ; name: play_setup
@@ -472,10 +581,14 @@ play_url     resq 1
 play_buf     resq 2
 play_frame   resq 1
 play_row     resq 1
-play_w       resq 1                 ; qwords: divisors of fb_width, fb_height
+play_slots   resq 1                 ; the sound, PLAY_SLOTS of PLAY_SLOT bytes
+play_w      resq 1                 ; qwords: divisors of fb_width, fb_height
 play_h       resq 1
 play_len     resd 2                 ; bytes in each buffer
 play_fps     resd 1
+play_rate    resd 1                 ; sound samples a second, 0 for none
+play_extra   resd 1                 ; 2 with sound: a frame's sample count
+play_slot    resd 1                 ; frames of sound queued so far
 play_chunk   resd 1
 play_pixels  resd 1
 play_scale   resd 1

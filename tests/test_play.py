@@ -1,9 +1,13 @@
+import math
+import os
 import re
 import socket
+import tempfile
 import threading
 
 from harness import SHELL_READY, TestFailure, Vm
 from test_desktop import open_icon, wait_desktop, wait_pixel
+from test_sound import dropouts, pitch
 from test_vivenc import encode
 
 W, H = 64, 48
@@ -81,6 +85,26 @@ def test_play_streams_a_video_in_chunks():
         pos = vm.wait_for(r"\[play\] no Vitre video there\r\n", start=pos).end()
         vm.sendkeys("play\n")
         vm.wait_for(r"usage: play http://host/video\.viv", start=pos)
+
+
+def test_play_plays_the_sound():
+    tone = bytes(128 + round(100 * math.sin(2 * math.pi * 400 * i / 16000)) for i in range(64000))
+    video = encode([bytes(RED * (W * H))] * 40, W, H, fps=10, chunk=8192, sound=tone)
+    port = serve_ranges({"/tone.viv": video}, [])
+    wav = os.path.join(tempfile.mkdtemp(prefix="vitre-snd-"), "out.wav")
+    with Vm("play_sound", net=True, extra=["-audiodev", f"wav,id=snd,path={wav}",
+                                           "-device", "AC97,audiodev=snd"]) as vm:
+        pos = vm.wait_for(SHELL_READY).end()
+        vm.sendkeys(f"play http://10.0.2.2:{port}/tone.viv\n")
+        vm.wait_for(r"\[play\] 40 frames\r\n", start=pos, timeout=30)
+        vm.qmp("quit")
+        vm.proc.wait(timeout=10)
+    rate, hz = pitch(wav)
+    if not 380 < hz < 420:
+        raise TestFailure(f"heard {hz:.0f} Hz at {rate} Hz, not 400")
+    seconds, gaps = dropouts(wav)
+    if seconds < 3.9 or gaps:
+        raise TestFailure(f"{seconds:.2f} s of sound with {gaps} dropouts, not 4 s whole")
 
 
 def test_desktop_video_icon_plays_a_url():
