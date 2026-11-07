@@ -81,7 +81,8 @@ def serve_pages(pages):
                         break
                     data += chunk
                 path = data.split(b" ")[1].decode() if b" " in data else "/"
-                conn.sendall(page(pages.get(path, b"<title>Missing</title>")))
+                body = pages.get(path, b"<title>Missing</title>")
+                conn.sendall(body if body.startswith(b"HTTP/") else page(body))
 
     threading.Thread(target=loop, daemon=True).start()
     return sock.getsockname()[1]
@@ -109,3 +110,21 @@ def test_browse_follows_links():
         vm.wait_screen(r"^ Page B[\s\S]*:\d+/b ")
         vm.sendkeys("bb")
         vm.wait_screen(r"^ Home")
+
+
+def redirect(to, code=301):
+    return f"HTTP/1.1 {code} Moved\r\nlocation:  {to}\r\n\r\n".encode()
+
+
+def test_browse_follows_redirects():
+    port = serve_pages({
+        "/old": redirect("/docs/"), "/docs/": redirect("new.html", 302),
+        "/docs/new.html": b"<title>Moved here</title>",
+        "/loop": redirect("/loop"),
+    })
+    with Vm("m14_redirect", net=True) as vm:
+        vm.wait_for(SHELL_READY)
+        vm.sendkeys(f"browse 10.0.2.2:{port}/old\n")
+        vm.wait_screen(r"^ Moved here[\s\S]*:\d+/docs/new\.html ")
+        vm.sendkeys(f"g10.0.2.2:{port}/loop\n")
+        vm.wait_screen(r"redirects too many times[\s\S]*:\d+/loop ")

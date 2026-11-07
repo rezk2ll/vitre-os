@@ -200,6 +200,75 @@ http_body:
     lea rax, [rel tcp_rx]
     ret
 
+; name: http_redirect
+; in:   a response in tcp_rx
+; out:  CF=0 and http_location = its Location header when the status is
+;       3xx; CF=1 if it is not a redirect or has no Location
+; clobbers: rax, rcx, rdx, rsi, rdi
+http_redirect:
+    lea rsi, [rel tcp_rx]
+    mov ecx, [rel tcp_rx_len]
+    cmp ecx, 12
+    jb .no
+    cmp dword [rsi], 'HTTP'
+    jne .no
+    cmp byte [rsi + 9], '3'         ; "HTTP/1.x 3"
+    jne .no
+    lea rdx, [rsi + rcx - 9]        ; a header name fits before this
+.line:
+    cmp rsi, rdx
+    jae .no
+    lodsb
+    cmp al, 10
+    jne .line
+    cmp byte [rsi], 13              ; the blank line ends the headers
+    je .no
+    lea rdi, [rel http_loc_name]
+    xor ecx, ecx
+.name:
+    mov al, [rsi + rcx]
+    or al, 0x20                     ; lower case; ':' already has the bit
+    cmp al, [rdi + rcx]
+    jne .line
+    inc ecx
+    cmp ecx, 9
+    jb .name
+    add rsi, 9
+    add rdx, 9                      ; the response's end
+.space:
+    cmp rsi, rdx
+    jae .no
+    cmp byte [rsi], ' '
+    jne .value
+    inc rsi
+    jmp .space
+.value:
+    lea rdi, [rel http_location]
+    lea rcx, [rdi + HTTP_HOST_MAX - 1]
+.copy:
+    cmp rsi, rdx
+    jae .end
+    mov al, [rsi]
+    cmp al, 13
+    je .end
+    cmp al, 10
+    je .end
+    cmp rdi, rcx
+    jae .no                         ; too long to follow
+    stosb
+    inc rsi
+    jmp .copy
+.end:
+    mov byte [rdi], 0
+    lea rax, [rel http_location]
+    cmp rdi, rax
+    je .no
+    clc
+    ret
+.no:
+    stc
+    ret
+
 ; name: cmd_get
 ; in:   rdi = URL
 ; out:  the response printed without CRs, then its size
@@ -265,10 +334,12 @@ http_msg_bytes  db " bytes", 10, 0
 http_msg_unverified db "over TLS, certificate NOT verified, ", 0
 http_msg_verified db "over TLS, certificate verified, ", 0
 http_msg_failed db "[http] no response", 10, 0
+http_loc_name   db "location:"
 
 section .bss
 http_port    resd 1
 http_tls     resb 1                 ; the last URL was https: not verified
 http_host    resb HTTP_HOST_MAX
+http_location resb HTTP_HOST_MAX
 http_request resb HTTP_REQ_MAX
 section .text
