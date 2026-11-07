@@ -32,6 +32,81 @@ EC_POINT equ 96
     call mm_sub
 %endmacro
 
+; name: ecdsa_verify
+; in:   rdi = public key x then y, rsi = 32-byte hash, rdx = signature r
+;       then s; all big-endian 32-byte numbers
+; out:  CF=1 unless the signature is valid for the hash and key
+; clobbers: caller-saved
+ecdsa_verify:
+    push rbx
+    push r12
+    push r13
+    mov rbx, rdi
+    mov r12, rsi
+    mov r13, rdx
+    lea rdi, [rel ec_sr]
+    mov rsi, r13
+    call num_load
+    lea rdi, [rel ec_ss]
+    lea rsi, [r13 + 32]
+    call num_load
+    lea rsi, [rel ec_sr]
+    lea rcx, [rel mm_n256]
+    call ec_scalar_ok
+    jc .done
+    lea rsi, [rel ec_ss]
+    call ec_scalar_ok
+    jc .done
+    lea rdi, [rel ec_t0]            ; the hash, mod n
+    mov rsi, r12
+    call num_load
+    lea rdi, [rel ec_t0]
+    lea rsi, [rel ec_t0]
+    lea rcx, [rel mm_n256]
+    call mm_reduce
+    lea r13, [rel mm_n256]          ; u1 = e/s and u2 = r/s, mod n
+    lea rdi, [rel ec_t1]
+    lea rsi, [rel ec_ss]
+    mov rcx, r13
+    call mm_to
+    lea rdi, [rel ec_t2]
+    lea rsi, [rel ec_t1]
+    mov rcx, r13
+    call mm_inv
+    lea rdi, [rel ec_u1]
+    lea rsi, [rel ec_t0]
+    lea rdx, [rel ec_t2]
+    mov rcx, r13
+    call mm_mul
+    lea rdi, [rel ec_u2]
+    lea rsi, [rel ec_sr]
+    lea rdx, [rel ec_t2]
+    mov rcx, r13
+    call mm_mul
+    mov rdi, rbx
+    call ec_load_key
+    jc .done
+    call ec_table
+    call ec_mul2
+    call ec_affine_x
+    jc .done
+    lea rdi, [rel ec_t1]            ; x mod n, against r
+    mov rsi, rdi
+    lea rcx, [rel mm_n256]
+    call mm_reduce
+    lea rsi, [rel ec_t1]
+    lea rdi, [rel ec_sr]
+    mov ecx, 32
+    repe cmpsb
+    je .done                        ; CF=0 from the compare
+.bad:
+    stc
+.done:
+    pop r13
+    pop r12
+    pop rbx
+    ret
+
 ; name: ec_affine_x
 ; in:   ec_r
 ; out:  ec_t1 = its affine x, X/Z^2, out of Montgomery form; CF=1 if it
@@ -92,8 +167,8 @@ ec_is_zero:
 
 ; name: ec_load_key
 ; in:   rdi = public key x then y, big-endian
-; out:  it in the table's second point, in Montgomery form; CF=1 if a
-;       coordinate is 0 or not below p
+; out:  it in the table's second point, in Montgomery form; CF=1 if it is
+;       not on the curve
 ; clobbers: caller-saved
 ec_load_key:
     push rbx
@@ -106,7 +181,7 @@ ec_load_key:
     call num_load
     lea rsi, [rel ec_q + EC_X]
     lea rcx, [rel mm_p256]
-    call ec_scalar_ok
+    call ec_scalar_ok               ; x = 0 is not on the curve either
     jc .done
     lea rsi, [rel ec_q + EC_Y]
     call ec_scalar_ok
@@ -123,7 +198,19 @@ ec_load_key:
     lea rsi, [rel mm_p256 + MM_ONE]
     mov ecx, 32
     rep movsb
-    clc
+    FMUL ec_t0, ec_q + EC_X, ec_q + EC_X    ; y^2 = x^3 - 3x + b
+    FMUL ec_t0, ec_t0, ec_q + EC_X
+    FADD ec_t1, ec_q + EC_X, ec_q + EC_X
+    FADD ec_t1, ec_t1, ec_q + EC_X
+    FSUB ec_t0, ec_t0, ec_t1
+    FADD ec_t0, ec_t0, ec_b
+    FMUL ec_t1, ec_q + EC_Y, ec_q + EC_Y
+    lea rsi, [rel ec_t0]
+    lea rdi, [rel ec_t1]
+    mov ecx, 32
+    repe cmpsb
+    je .done
+    stc
 .done:
     pop rbx
     ret
@@ -303,6 +390,7 @@ align 8
 ec_base dq 0x79e730d418a9143c, 0x75ba95fc5fedb601, 0x79fb732b77622510, 0x18905f76a53755c6
         dq 0xddf25357ce95560a, 0x8b4ab8e4ba19e45c, 0xd2e88688dd21f325, 0x8571ff1825885d85
         dq 0x0000000000000001, 0xffffffff00000000, 0xffffffffffffffff, 0x00000000fffffffe
+ec_b    dq 0xd89cdf6229c4bddf, 0xacf005cd78843090, 0xe5a220abf7212ed6, 0xdc30061d04874834
 
 section .bss
 alignb 8
@@ -311,6 +399,8 @@ ec_q  resb EC_POINT
 ec_gq resb EC_POINT
 ec_r  resb EC_POINT
 ec_o  resb EC_POINT
+ec_sr resq 4
+ec_ss resq 4
 ec_u1 resq 4
 ec_u2 resq 4
 ec_t0 resq 4

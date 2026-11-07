@@ -63,3 +63,32 @@ def test_p256_point_multiply():
         for k, pt in cases:
             check(vm, f"ecmul {be(k)} {be(pt[0])}{be(pt[1])}", be(mul(k, pt)[0]))
         check(vm, f"ecmul {be(N)} {be(G[0])}{be(G[1])}", "")
+
+
+def sign(d, e, rng):
+    while True:
+        k = rng.randrange(1, N)
+        r = mul(k, G)[0] % N
+        s = pow(k, -1, N) * (e + r * d) % N
+        if r and s:
+            return r, s
+
+
+def test_ecdsa_p256_verify():
+    rng = random.Random(186)
+    cases = []
+    for _ in range(2):
+        d = rng.randrange(1, N)
+        q = mul(d, G)
+        e = rng.randrange(2**256)
+        r, s = sign(d, e % N, rng)
+        key, digest = be(q[0]) + be(q[1]), be(e)
+        cases += [(key, digest, be(r) + be(s), "01"),
+                  (key, be(e ^ 1), be(r) + be(s), "00"),
+                  (key, digest, be(r + 1) + be(s), "00"),
+                  (key, digest, be(r) + be(N), "00"),
+                  (be(q[0]) + be(q[1] ^ 1), digest, be(r) + be(s), "00")]
+    with Vm("m17_ecdsa", cmdline=QWERTY) as vm:
+        vm.wait_for(SHELL_READY)
+        for key, digest, sig, want in cases:
+            check(vm, f"ecdsa {key} {digest} {sig}", want)

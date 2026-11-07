@@ -168,6 +168,15 @@ cr_pmul:                            ; a, b: a*b mod the P-256 prime
     call mm_mul
     jmp cr_mm_out
 
+cr_ecdsa:                           ; key x and y, hash, r and s: 01 if valid
+    lea rdi, [rel cr_arg]
+    lea rsi, [rel cr_arg + CR_MAX]
+    lea rdx, [rel cr_arg + 2 * CR_MAX]
+    call ecdsa_verify
+    setnc [rel cr_out]
+    mov esi, 1
+    jmp cr_print_out
+
 cr_ecmul:                           ; k, point x and y: the x of k times it
     lea rdi, [rel ec_u1]
     xor eax, eax
@@ -387,6 +396,7 @@ cr_table:
     dq cr_n_pmul, cr_pmul, 2
     dq cr_n_ninv, cr_ninv, 1
     dq cr_n_ecmul, cr_ecmul, 2
+    dq cr_n_ecdsa, cr_ecdsa, 3
     dq 0
 
 cr_n_sha256   db "sha256", 0
@@ -401,6 +411,7 @@ cr_n_label    db "label", 0
 cr_n_pmul     db "pmul", 0
 cr_n_ninv     db "ninv", 0
 cr_n_ecmul    db "ecmul", 0
+cr_n_ecdsa    db "ecdsa", 0
 cr_msg_bad    db "crypto: bad tag", 10, 0
 cr_msg_usage db "usage: crypto sha256 <data> | hmac <key> <data> | hkdf <salt> <key> <info> <len>", 10
              db "       | chacha20 <key> <nonce> <counter> <data> | poly1305 <key> <data>", 10
@@ -408,6 +419,7 @@ cr_msg_usage db "usage: crypto sha256 <data> | hmac <key> <data> | hkdf <salt> <
              db "       | label <secret> <label> <context> <len> (TLS 1.3 HKDF-Expand-Label)", 10
              db "       | pmul <a> <b> (mod the P-256 prime) | ninv <a> (1/a mod its order)", 10
              db "       | ecmul <k> <x y> (x of k times a P-256 point)", 10
+             db "       | ecdsa <key x y> <hash> <r s> (P-256: 01 if valid)", 10
              db "       inputs in hex, - for an empty one", 10, 0
 
 section .bss
