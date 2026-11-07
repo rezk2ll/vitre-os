@@ -64,8 +64,13 @@ def test_vivenc_round_trip():
         raise TestFailure(f"moving frame: {frames[2][0]:#x} {frames[2][15 * w + 5]:#x}")
     if len(data) <= 1024:
         raise TestFailure("the video should span several chunks")
-    if len(encode([red, red], w, h)) - 16 > 2 * (4 + 2 * (w * h // 64 + 1)):
-        raise TestFailure("a still frame should cost a few bytes")
+    first = len(encode([red], w, h))
+    if len(encode([red, red], w, h)) - first > 4 + w * h // 64 + 1:
+        raise TestFailure("a frame like the one before should be all keep codes")
+    grey = bytes((0x30, 0x30, 0x30)) * (w * h)
+    _, [shade] = decode(encode([grey], w, h))
+    if len(set(shade)) < 2:
+        raise TestFailure("a shade between two colours should be dithered")
     bad = subprocess.run([VIVENC, "0", "1", "1"], capture_output=True)
     if bad.returncode != 1 or b"usage" not in bad.stderr:
         raise TestFailure(f"bad size: {bad.returncode} {bad.stderr!r}")
