@@ -1,6 +1,7 @@
 ; Shell: reads a line from the keyboard, runs the command it names.
 
 SHELL_LINE_MAX equ 1024
+SHELL_HISTORY  equ 16               ; lines Up can bring back, a power of two
 
 SHELL_NAME_COLUMN equ 10
 
@@ -36,14 +37,16 @@ shell_run:
 ; in:   rdi = buffer of SHELL_LINE_MAX bytes
 ; out:  zero-terminated line in the buffer, rax = length; the line is echoed.
 ;       Backspace erases, Ctrl+C drops the line, Ctrl+L clears the screen;
-;       PgUp, PgDn and the wheel scroll back through earlier output.
+;       PgUp, PgDn and the wheel scroll back through earlier output. Up and
+;       Down bring back earlier lines, Tab completes a command name.
 ; clobbers: caller-saved
 shell_readline:
     push rbx
     push r12
-    sub rsp, 8
+    push r13
     mov rbx, rdi
-    xor r12d, r12d
+    xor r12d, r12d                  ; length
+    xor r13d, r13d                  ; lines back in the history, 0 for a new one
 .key:
     call sb_getc
     cmp eax, 10
@@ -54,6 +57,12 @@ shell_readline:
     je .cancel
     cmp eax, 12
     je .clear
+    cmp eax, 9
+    je .tab
+    cmp eax, KEY_UP
+    je .older
+    cmp eax, KEY_DOWN
+    je .newer
     cmp eax, ' '
     jb .key
     lea ecx, [rax - 0x80]           ; KEY_* codes have no character
@@ -86,14 +95,249 @@ shell_readline:
     mov rdi, rbx
     call kputs
     jmp .key
+.tab:
+    mov rdi, rbx
+    mov esi, r12d
+    call shell_complete
+    mov r12d, eax
+    jmp .key
+.older:
+    cmp r13d, [rel shell_hist_count]
+    jae .key
+    inc r13d
+    jmp .recall
+.newer:
+    test r13d, r13d
+    jz .key
+    dec r13d
+.recall:
+    mov edi, r12d
+    call shell_erase
+    mov rdi, rbx
+    mov esi, r13d
+    call shell_hist_copy
+    mov r12d, eax
+    mov rdi, rbx
+    call kputs
+    jmp .key
 .enter:
     mov byte [rbx + r12], 0
     mov edi, 10
     call kputc
+    test r12d, r12d
+    jz .ret
+    mov rdi, rbx
+    call shell_hist_add
+.ret:
     mov eax, r12d
-    add rsp, 8
+    pop r13
     pop r12
     pop rbx
+    ret
+
+; name: shell_erase
+; in:   edi = characters to take back off the line on screen
+; out:  that many backspaces printed
+; clobbers: caller-saved
+shell_erase:
+    push rbx
+    mov ebx, edi
+.next:
+    test ebx, ebx
+    jz .done
+    mov edi, 8
+    call kputc
+    dec ebx
+    jmp .next
+.done:
+    pop rbx
+    ret
+
+; name: shell_hist_add
+; in:   rdi = a line just entered, not empty
+; out:  kept as the newest history line, unless it repeats the newest
+; clobbers: caller-saved
+shell_hist_add:
+    push rbx
+    mov rbx, rdi
+    cmp dword [rel shell_hist_count], 0
+    je .store
+    mov eax, [rel shell_hist_next]
+    dec eax
+    call shell_hist_slot
+    mov rsi, rax
+    mov rdi, rbx
+    call str_eq
+    je .done
+.store:
+    mov eax, [rel shell_hist_next]
+    call shell_hist_slot
+    mov rdi, rax
+    mov rsi, rbx
+.copy:
+    lodsb
+    stosb
+    test al, al
+    jnz .copy
+    inc dword [rel shell_hist_next]
+    mov eax, [rel shell_hist_count]
+    inc eax
+    mov ecx, SHELL_HISTORY
+    cmp eax, ecx
+    cmova eax, ecx
+    mov [rel shell_hist_count], eax
+.done:
+    pop rbx
+    ret
+
+; name: shell_hist_copy
+; in:   rdi = line buffer, esi = lines back, 1 the newest, 0 for an empty line
+; out:  that history line copied in, zero-terminated; rax = its length
+; clobbers: rax, rcx, rsi, rdi
+shell_hist_copy:
+    mov rcx, rdi
+    mov byte [rdi], 0
+    test esi, esi
+    jz .length
+    mov eax, [rel shell_hist_next]
+    sub eax, esi
+    call shell_hist_slot
+    mov rsi, rax
+.copy:
+    lodsb
+    stosb
+    test al, al
+    jnz .copy
+.length:
+    mov rax, rdi
+    sub rax, rcx
+    jz .ret                         ; the empty line: nothing was stored
+    dec rax
+.ret:
+    ret
+
+; name: shell_hist_slot
+; in:   eax = history line number, any value
+; out:  rax = its slot in the ring
+; clobbers: rax
+shell_hist_slot:
+    and eax, SHELL_HISTORY - 1
+    imul eax, eax, SHELL_LINE_MAX
+    push rcx
+    lea rcx, [rel shell_history]
+    add rax, rcx
+    pop rcx
+    ret
+
+; name: shell_complete
+; in:   rdi = line buffer, esi = its length
+; out:  a lone matching command name finished on the line and screen, or
+;       every match listed and the line printed again; rax = the new length
+; clobbers: caller-saved
+shell_complete:
+    push rbx
+    push r12
+    push r13
+    push r14
+    push r15
+    mov rbx, rdi
+    mov r12d, esi
+    mov byte [rbx + r12], 0
+    xor ecx, ecx
+.space:                             ; only the command word completes
+    cmp ecx, r12d
+    jae .scan
+    cmp byte [rbx + rcx], ' '
+    je .done
+    inc ecx
+    jmp .space
+.scan:
+    xor r14d, r14d                  ; matches
+    lea r15, [rel shell_commands]
+.entry:
+    cmp qword [r15], 0
+    je .counted
+    lea rsi, [r15 + 8]
+    call .prefix
+    jne .skip
+    inc r14d
+    lea r13, [r15 + 8]
+.skip:
+    mov rdi, r15
+    call shell_next_command
+    mov r15, rax
+    jmp .entry
+.counted:
+    test r14d, r14d
+    jz .done
+    cmp r14d, 1
+    ja .list
+.finish:                            ; the rest of the lone name, then a space
+    movzx edi, byte [r13 + r12]
+    test edi, edi
+    jnz .append
+    mov edi, ' '
+.append:
+    cmp r12d, SHELL_LINE_MAX - 1
+    jae .done
+    mov [rbx + r12], dil
+    inc r12d
+    mov byte [rbx + r12], 0
+    push rdi
+    sub rsp, 8
+    call kputc
+    add rsp, 8
+    pop rdi
+    cmp edi, ' '
+    jne .finish
+    jmp .done
+.list:
+    mov edi, 10
+    call kputc
+    lea r15, [rel shell_commands]
+.list_entry:
+    cmp qword [r15], 0
+    je .listed
+    lea rsi, [r15 + 8]
+    call .prefix
+    jne .list_next
+    lea rdi, [r15 + 8]
+    call kputs
+    mov edi, ' '
+    call kputc
+    mov edi, ' '
+    call kputc
+.list_next:
+    mov rdi, r15
+    call shell_next_command
+    mov r15, rax
+    jmp .list_entry
+.listed:
+    mov edi, 10
+    call kputc
+    lea rdi, [rel shell_prompt]
+    call kputs
+    mov rdi, rbx
+    call kputs
+.done:
+    mov eax, r12d
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop rbx
+    ret
+.prefix:                            ; ZF=1 if the line is a prefix of name rsi
+    xor ecx, ecx
+.prefix_char:
+    cmp ecx, r12d
+    jae .prefix_ret                 ; ZF=1 from the cmp
+    mov al, [rbx + rcx]
+    cmp al, [rsi + rcx]
+    jne .prefix_ret
+    inc ecx
+    jmp .prefix_char
+.prefix_ret:
     ret
 
 ; name: shell_execute
@@ -454,4 +698,8 @@ shell_msg_off    db "[shell] no ACPI power-off here; safe to switch off", 10, 0
 
 section .bss
 shell_line resb SHELL_LINE_MAX
+shell_history resb SHELL_HISTORY * SHELL_LINE_MAX
+alignb 4
+shell_hist_next  resd 1             ; slot number the next line goes to
+shell_hist_count resd 1
 section .text
