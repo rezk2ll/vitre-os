@@ -366,6 +366,7 @@ shell_commands:
     shell_command "tasks", cmd_tasks, "list tasks"
     shell_command "syms", sym_dump, "dump the symbol table"
     shell_command "forge", forge_check, "reassemble the patchable modules"
+    shell_command "edit", cmd_edit, "edit a module: edit <module>"
     shell_command "patch", cmd_patch, "patch a module live: patch <module>"
     shell_command "rollback", cmd_rollback, "undo the last patch"
     shell_command "uptime", cmd_uptime, "time since boot"

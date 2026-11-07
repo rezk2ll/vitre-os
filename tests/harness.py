@@ -183,6 +183,17 @@ class Vm:
                      **{"hold-time": 10})
             time.sleep(delay)
 
+    def press(self, *keys, delay=0.05):
+        """One chord of QMP qcodes, e.g. press("ctrl", "s") or press("right")."""
+        self.qmp("send-key", keys=[{"type": "qcode", "data": k} for k in keys],
+                 **{"hold-time": 10})
+        time.sleep(delay)
+
+    def ctrl(self, letter):
+        """Ctrl+letter, with the letter where the kernel's layout puts it."""
+        layout = "qwerty" if "kbd=qwerty" in self.cmdline.split() else "azerty"
+        self.press("ctrl", *qcodes(letter, layout))
+
     def stop(self):
         if self.proc and self.proc.poll() is None:
             self.proc.kill()
