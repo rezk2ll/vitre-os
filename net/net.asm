@@ -20,11 +20,20 @@ net_init:
 ; out:  net_mac printed as "52:54:00:12:34:56"
 ; clobbers: caller-saved
 net_put_mac:
+    lea rdi, [rel net_mac]          ; falls through into net_put_mac_at
+
+; name: net_put_mac_at
+; in:   rdi = MAC address
+; out:  printed as "52:54:00:12:34:56"
+; clobbers: caller-saved
+net_put_mac_at:
     push rbx
+    push r12
+    sub rsp, 8
+    mov r12, rdi
     xor ebx, ebx
 .byte:
-    lea rax, [rel net_mac]
-    movzx edi, byte [rax + rbx]
+    movzx edi, byte [r12 + rbx]
     mov esi, 2
     call kput_hexn
     inc ebx
@@ -34,6 +43,8 @@ net_put_mac:
     call kputc
     jmp .byte
 .done:
+    add rsp, 8
+    pop r12
     pop rbx
     ret
 
@@ -76,6 +87,8 @@ cmd_net:
 ; clobbers: none
 eth_input:
     ret
+
+net_ip dd 0x0f02000a                ; 10.0.2.15, QEMU's user network
 
 net_msg_none      db "[net] no network card", 10, 0
 net_msg_mac       db "[net] mac ", 0
