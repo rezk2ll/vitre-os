@@ -61,6 +61,7 @@ kernel_entry:
     call src_load
     call patch_boot
     call kbd_init
+    call net_init
     sti
     lea rdi, [rel msg_interrupts]
     call kputs
@@ -144,6 +145,8 @@ selftest_pit:
 %include "kernel/breakpoint.asm"
 %include "drivers/ata.asm"
 %include "drivers/pci.asm"
+%include "drivers/e1000.asm"
+%include "net/net.asm"
 %include "kernel/report.asm"
 %include "kernel/symbols.asm"
 %include "forge/lex.asm"
