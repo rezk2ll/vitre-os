@@ -170,6 +170,7 @@ selftest_pit:
 %include "lib/x25519.asm"
 %include "lib/mont.asm"
 %include "lib/p256.asm"
+%include "net/x509.asm"
 %include "net/tls.asm"
 %include "apps/crypto.asm"
 %include "kernel/report.asm"

@@ -177,6 +177,22 @@ cr_ecdsa:                           ; key x and y, hash, r and s: 01 if valid
     mov esi, 1
     jmp cr_print_out
 
+cr_x509:                            ; DER: algorithm, key flag, key, signature
+    lea rdi, [rel cr_x5]
+    lea rsi, [rel cr_arg]
+    mov ecx, [rel cr_lens]
+    call x509_parse
+    mov esi, 0
+    jc cr_print_out
+    lea rdi, [rel cr_out]
+    mov ax, [rel cr_x5 + X5_ALG]    ; and X5_KEYOK after it
+    stosw
+    lea rsi, [rel cr_x5 + X5_KEY]
+    mov ecx, 128                    ; the key, then the signature
+    rep movsb
+    mov esi, 2 + 128
+    jmp cr_print_out
+
 cr_ecmul:                           ; k, point x and y: the x of k times it
     lea rdi, [rel ec_u1]
     xor eax, eax
@@ -397,6 +413,7 @@ cr_table:
     dq cr_n_ninv, cr_ninv, 1
     dq cr_n_ecmul, cr_ecmul, 2
     dq cr_n_ecdsa, cr_ecdsa, 3
+    dq cr_n_x509, cr_x509, 1
     dq 0
 
 cr_n_sha256   db "sha256", 0
@@ -412,6 +429,7 @@ cr_n_pmul     db "pmul", 0
 cr_n_ninv     db "ninv", 0
 cr_n_ecmul    db "ecmul", 0
 cr_n_ecdsa    db "ecdsa", 0
+cr_n_x509     db "x509", 0
 cr_msg_bad    db "crypto: bad tag", 10, 0
 cr_msg_usage db "usage: crypto sha256 <data> | hmac <key> <data> | hkdf <salt> <key> <info> <len>", 10
              db "       | chacha20 <key> <nonce> <counter> <data> | poly1305 <key> <data>", 10
@@ -420,6 +438,7 @@ cr_msg_usage db "usage: crypto sha256 <data> | hmac <key> <data> | hkdf <salt> <
              db "       | pmul <a> <b> (mod the P-256 prime) | ninv <a> (1/a mod its order)", 10
              db "       | ecmul <k> <x y> (x of k times a P-256 point)", 10
              db "       | ecdsa <key x y> <hash> <r s> (P-256: 01 if valid)", 10
+             db "       | x509 <certificate> (its algorithm, key and signature)", 10
              db "       inputs in hex, - for an empty one", 10, 0
 
 section .bss
@@ -427,6 +446,7 @@ alignb 8
 cr_lens resd CR_ARGS
 cr_ctx  resb SHA_CTX_SIZE
 cr_prk  resb 32
+cr_x5   resb X5_SIZE
 cr_mx   resq 4
 cr_my   resq 4
 cr_arg  resb CR_ARGS * CR_MAX
