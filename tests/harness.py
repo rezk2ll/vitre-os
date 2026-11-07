@@ -60,7 +60,7 @@ class Vm:
         self.tmp = tempfile.mkdtemp(prefix="vitre-qmp-")
         self.qmp_path = os.path.join(self.tmp, "qmp.sock")
         cmd = [
-            QEMU, "-machine", "pc", "-m", self.mem,
+            QEMU, "-machine", "pc", "-accel", "kvm", "-accel", "tcg", "-m", self.mem,
             "-drive", f"file={self.disk},format=raw,if=ide,index=0",
             "-serial", "stdio", "-display", "none", "-no-reboot",
             "-device", "isa-debug-exit,iobase=0xf4,iosize=0x04",
