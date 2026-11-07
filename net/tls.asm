@@ -3,33 +3,346 @@
 ; tcp_rx at tls_pos.
 
 TLS_WAIT_MS   equ 5000
+TLS_HS_MAX    equ 65536
 TLS_HANDSHAKE equ 22
+TLS_CCS       equ 20
+TLS_APP       equ 23
+TLS_KEY       equ 0                 ; a key block: key, iv, record number
+TLS_IV        equ 32
+TLS_SEQ       equ 48
+TLS_BLOCK     equ 56
 
 ; name: tls_handshake
 ; in:   rdi = server name, connected over TCP; interrupts on
-; out:  CF=1 if the server did not answer with a ServerHello
+; out:  CF=1 if the server did not answer with TLS 1.3, ChaCha20 and X25519
 ; clobbers: caller-saved
 tls_handshake:
     sub rsp, 8
-    mov dword [rel tls_pos], 0
+    xor eax, eax
+    mov [rel tls_pos], eax
+    mov [rel tls_hs_len], eax
+    mov [rel tls_hs_pos], eax
+    mov [rel tls_rd_on], al
     push rdi
     lea rdi, [rel tls_ctx]
     call sha256_init
     pop rdi
     call tls_hello
     jc .done
-    call tls_record
+    call tls_next_msg
     jc .done
-    cmp al, TLS_HANDSHAKE
+    cmp al, 2                       ; ServerHello
     jne .fail
-    test ecx, ecx
-    jz .fail
-    cmp byte [rsi], 2               ; ServerHello
-    je .done                        ; CF=0
+    call tls_server_hello
+    jc .done
+    call tls_next_msg
+    jc .done
+    cmp al, 8                       ; EncryptedExtensions
+    jne .fail
+    call tls_hs_add
+    clc
+    jmp .done
 .fail:
     stc
 .done:
     lea rsp, [rsp + 8]
+    ret
+
+; name: tls_server_hello
+; in:   rsi = the ServerHello message, ecx = its length
+; out:  it hashed, the shared secret and handshake keys made, reading
+;       switched to them; CF=1 if it does not pick TLS 1.3, ChaCha20 and
+;       an X25519 key (a HelloRetryRequest included)
+; clobbers: caller-saved
+tls_server_hello:
+    push rbx
+    push r12
+    sub rsp, 8
+    mov rbx, rsi
+    mov r12d, ecx
+    call tls_hs_add
+    cmp r12d, 44
+    jb .fail
+    cmp byte [rbx + 38], 0          ; the empty session id ours echoed
+    jne .fail
+    lea rsi, [rbx + 39]             ; past type, length, version, random
+    cmp word [rsi], 0x0313          ; 13 03
+    jne .fail
+    add rsi, 5
+    lea rdx, [rbx + r12]
+    mov byte [rel tls_got], 0
+.ext:
+    lea rax, [rsi + 4]
+    cmp rax, rdx
+    ja .check
+    movzx eax, word [rsi]
+    movzx ecx, word [rsi + 2]
+    xchg cl, ch
+    lea rdi, [rsi + rcx + 4]
+    cmp rdi, rdx
+    ja .fail
+    cmp ax, 0x2b00                  ; supported_versions
+    jne .key_share
+    cmp ecx, 2
+    jne .fail
+    cmp word [rsi + 4], 0x0403
+    jne .fail
+    or byte [rel tls_got], 1
+.key_share:
+    cmp ax, 0x3300
+    jne .next
+    cmp ecx, 36                     ; not a HelloRetryRequest's bare group
+    jne .fail
+    cmp dword [rsi + 4], 0x20001d00 ; x25519, 32 bytes
+    jne .fail
+    push rsi
+    push rcx
+    lea rdi, [rel tls_peer]
+    add rsi, 8
+    mov ecx, 32
+    rep movsb
+    pop rcx
+    pop rsi
+    or byte [rel tls_got], 2
+.next:
+    lea rsi, [rsi + rcx + 4]
+    jmp .ext
+.check:
+    cmp byte [rel tls_got], 3
+    jne .fail
+    lea rdi, [rel tls_shared]
+    lea rsi, [rel tls_priv]
+    lea rdx, [rel tls_peer]
+    call x25519
+    lea rdi, [rel tls_zero]         ; the early secret, without a PSK
+    mov esi, 32
+    lea rdx, [rel tls_zero]
+    mov ecx, 32
+    lea r8, [rel tls_secret]
+    call hmac_sha256
+    lea rdx, [rel tls_shared]
+    call tls_advance
+    call tls_transcript
+    lea rdi, [rel tls_secret]
+    lea rsi, [rel tls_l_chs]
+    lea r8, [rel tls_c_hs]
+    call tls_derive
+    lea rdi, [rel tls_secret]
+    lea rsi, [rel tls_l_shs]
+    lea r8, [rel tls_s_hs]
+    call tls_derive
+    lea rdi, [rel tls_rd]
+    lea rsi, [rel tls_s_hs]
+    call tls_keys
+    mov byte [rel tls_rd_on], 1
+    clc
+    jmp .done
+.fail:
+    stc
+.done:
+    lea rsp, [rsp + 8]
+    pop r12
+    pop rbx
+    ret
+
+; name: tls_advance
+; in:   rdx = 32-byte input key material, tls_secret
+; out:  tls_secret = HKDF-Extract(Derive-Secret(tls_secret, "derived", ""),
+;       the input), the next secret of the key schedule
+; clobbers: caller-saved
+tls_advance:
+    push rdx
+    call tls_empty_hash
+    lea rdi, [rel tls_secret]
+    lea rsi, [rel tls_l_derived]
+    lea r8, [rel tls_tmp]
+    call tls_derive
+    pop rdx
+    lea rdi, [rel tls_tmp]
+    mov esi, 32
+    mov ecx, 32
+    lea r8, [rel tls_secret]
+    jmp hmac_sha256
+
+; name: tls_keys
+; in:   rdi = key block, rsi = traffic secret
+; out:  the block's key and iv derived, its record number 0
+; clobbers: caller-saved
+tls_keys:
+    push rbx
+    push r12
+    sub rsp, 8
+    mov rbx, rdi
+    mov r12, rsi
+    mov rdi, r12
+    lea rsi, [rel tls_l_key]
+    xor ecx, ecx
+    lea r8, [rbx + TLS_KEY]
+    mov r9d, 32
+    call tls_expand_label
+    mov rdi, r12
+    lea rsi, [rel tls_l_iv]
+    xor ecx, ecx
+    lea r8, [rbx + TLS_IV]
+    mov r9d, 12
+    call tls_expand_label
+    mov qword [rbx + TLS_SEQ], 0
+    add rsp, 8
+    pop r12
+    pop rbx
+    ret
+
+; name: tls_transcript
+; in:   tls_ctx
+; out:  tls_hash = the hash of the handshake so far; tls_ctx goes on
+; clobbers: caller-saved
+tls_transcript:
+    lea rdi, [rel tls_tmpctx]
+    lea rsi, [rel tls_ctx]
+    mov ecx, SHA_CTX_SIZE
+    rep movsb
+    jmp tls_hash_tmp
+
+; name: tls_empty_hash
+; in:   none
+; out:  tls_hash = the hash of nothing
+; clobbers: caller-saved
+tls_empty_hash:
+    lea rdi, [rel tls_tmpctx]
+    call sha256_init
+tls_hash_tmp:
+    lea rdi, [rel tls_tmpctx]
+    lea rsi, [rel tls_hash]
+    jmp sha256_final
+
+; name: tls_next_msg
+; in:   interrupts on
+; out:  rsi = the next handshake message, ecx = its length with the
+;       header, al = its type; CF=1 if the records ran out or were bad
+; clobbers: caller-saved
+tls_next_msg:
+    mov eax, [rel tls_hs_len]
+    sub eax, [rel tls_hs_pos]
+    cmp eax, 4
+    jb .more
+    lea rsi, [rel tls_hs]
+    mov edx, [rel tls_hs_pos]
+    add rsi, rdx
+    movzx ecx, byte [rsi + 1]
+    shl ecx, 16
+    movzx edx, word [rsi + 2]
+    xchg dl, dh
+    or ecx, edx
+    add ecx, 4
+    cmp eax, ecx
+    jb .more
+    add [rel tls_hs_pos], ecx
+    movzx eax, byte [rsi]
+    clc
+    ret
+.more:
+    call tls_read_record
+    jnc tls_next_msg
+    ret
+
+; name: tls_read_record
+; in:   interrupts on
+; out:  the next handshake record's content appended to tls_hs, change
+;       cipher spec records skipped; CF=1 on anything else, a record that
+;       does not decrypt, or a timeout
+; clobbers: caller-saved
+tls_read_record:
+    mov eax, [rel tls_hs_pos]
+    cmp eax, [rel tls_hs_len]
+    jne .read
+    xor eax, eax                    ; all used: start the buffer over
+    mov [rel tls_hs_pos], eax
+    mov [rel tls_hs_len], eax
+.read:
+    call tls_record
+    jc .ret
+    cmp al, TLS_CCS
+    je .read
+    cmp byte [rel tls_rd_on], 0
+    je .plain
+    cmp al, TLS_APP
+    jne .fail
+    call tls_decrypt
+    jc .ret
+.plain:
+    cmp al, TLS_HANDSHAKE
+    jne .fail
+    mov edx, [rel tls_hs_len]
+    lea eax, [rdx + rcx]
+    cmp eax, TLS_HS_MAX
+    ja .fail
+    mov [rel tls_hs_len], eax
+    lea rdi, [rel tls_hs]
+    add rdi, rdx
+    rep movsb
+    clc
+.ret:
+    ret
+.fail:
+    stc
+    ret
+
+; name: tls_decrypt
+; in:   rdx = record, rsi = payload, ecx = its length
+; out:  rsi = the content, ecx = its length, al = the inner type; CF=1 if
+;       it does not authenticate
+; clobbers: caller-saved
+tls_decrypt:
+    push rbx
+    push r12
+    push r13
+    mov rbx, rdx
+    mov r12, rsi
+    mov r13d, ecx
+    sub r13d, 16
+    jb .done
+    lea rdi, [rel tls_rd]
+    call tls_nonce
+    lea rdi, [rel tls_rd + TLS_KEY]
+    lea rsi, [rel tls_nonce_buf]
+    mov rdx, rbx
+    mov ecx, 5
+    mov r8, r12
+    mov r9d, r13d
+    call aead_open
+    jc .done
+.strip:                             ; the type is the last byte not 0
+    test r13d, r13d
+    jz .bad
+    dec r13d
+    movzx eax, byte [r12 + r13]
+    test al, al
+    jz .strip
+    mov rsi, r12
+    mov ecx, r13d
+    clc
+    jmp .done
+.bad:
+    stc
+.done:
+    pop r13
+    pop r12
+    pop rbx
+    ret
+
+; name: tls_nonce
+; in:   rdi = key block
+; out:  tls_nonce_buf = its iv xor its record number; the number advanced
+; clobbers: rax
+tls_nonce:
+    mov rax, [rdi + TLS_IV]
+    mov [rel tls_nonce_buf], rax
+    mov eax, [rdi + TLS_IV + 8]
+    mov [rel tls_nonce_buf + 8], eax
+    mov rax, [rdi + TLS_SEQ]
+    inc qword [rdi + TLS_SEQ]
+    bswap rax
+    xor [rel tls_nonce_buf + 4], rax
     ret
 
 ; name: tls_hello
@@ -273,6 +586,16 @@ cmd_tls:
     pop rbx
     ret
 
+; name: tls_derive
+; in:   rdi = secret, rsi = label, r8 = 32-byte output, tls_hash
+; out:  Derive-Secret(secret, label, the messages hashed in tls_hash)
+; clobbers: caller-saved
+tls_derive:
+    lea rdx, [rel tls_hash]
+    mov ecx, 32
+    mov r9d, 32
+    ; fall through
+
 ; name: tls_expand_label
 ; in:   rdi = secret, rsi = label without "tls13 " (at most 32 bytes),
 ;       rdx = context, ecx = its length (at most 32), r8 = output,
@@ -346,21 +669,41 @@ tls_base       db 9
                times 31 db 0
 tls_one        db 1
 tls_prefix     db "tls13 "
-tls_msg_ok     db "[tls] server hello received", 10, 0
+tls_l_derived  db "derived", 0
+tls_l_chs      db "c hs traffic", 0
+tls_l_shs      db "s hs traffic", 0
+tls_l_key      db "key", 0
+tls_l_iv       db "iv", 0
+tls_msg_ok     db "[tls] handshake keys work: encrypted extensions read", 10, 0
 tls_msg_failed db "[tls] handshake failed", 10, 0
 tls_msg_usage  db "usage: tls <host> <port>", 10, 0
 
 section .bss
 alignb 8
-tls_pos    resd 1
+tls_pos       resd 1
+tls_hs_len    resd 1
+tls_hs_pos    resd 1
+tls_rd_on     resb 1
+tls_got       resb 1
 alignb 8
-tls_ctx    resb SHA_CTX_SIZE
-tls_tmpctx resb SHA_CTX_SIZE
-tls_rng    resb SHA_CTX_SIZE
-tls_pool   resb 32                  ; with tls_seed right after it
-tls_seed   resq 2
-tls_priv   resb 32
-tls_pub    resb 32
-tls_label  resb 2 + 1 + 6 + 32 + 1 + 32
-tls_buf    resb 512
+tls_rd        resb TLS_BLOCK
+tls_nonce_buf resb 12
+tls_ctx       resb SHA_CTX_SIZE
+tls_tmpctx    resb SHA_CTX_SIZE
+tls_rng       resb SHA_CTX_SIZE
+tls_pool      resb 32               ; with tls_seed right after it
+tls_seed      resq 2
+tls_zero      resb 32
+tls_priv      resb 32
+tls_pub       resb 32
+tls_peer      resb 32
+tls_shared    resb 32
+tls_secret    resb 32
+tls_c_hs      resb 32
+tls_s_hs      resb 32
+tls_hash      resb 32
+tls_tmp       resb 32
+tls_label     resb 2 + 1 + 6 + 32 + 1 + 32
+tls_buf       resb 512
+tls_hs        resb TLS_HS_MAX
 section .text
