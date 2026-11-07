@@ -125,6 +125,9 @@ sched_list:
     lea rdi, [rel sched_msg_ready]
     cmp qword [rbx + TASK_STATE], TASK_READY
     je .state
+    lea rdi, [rel sched_msg_paused]
+    cmp qword [rbx + TASK_STATE], TASK_PAUSED
+    je .state
     lea rdi, [rel sched_msg_dead]
 .state:
     call kputs
@@ -145,3 +148,4 @@ sched_list:
 sched_msg_task  db "[task] ", 0
 sched_msg_ready db " ready ", 0
 sched_msg_dead  db " dead ", 0
+sched_msg_paused db " paused ", 0

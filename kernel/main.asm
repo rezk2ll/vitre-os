@@ -56,6 +56,7 @@ kernel_entry:
     call pic_init
     call pit_init
     call sched_init
+    call debug_init
     call src_load
     call patch_boot
     call kbd_init
@@ -138,6 +139,7 @@ selftest_pit:
 %include "kernel/memtest.asm"
 %include "kernel/sched.asm"
 %include "kernel/tasktest.asm"
+%include "kernel/debug.asm"
 %include "drivers/ata.asm"
 %include "kernel/report.asm"
 %include "kernel/symbols.asm"
@@ -160,6 +162,7 @@ selftest_pit:
 %include "forge/unary.asm"
 %include "forge/flow.asm"
 %include "apps/shell.asm"
+%include "apps/taskcmd.asm"
 
 msg_long_mode  db "[boot] long mode ok", 10, 0
 msg_image_ok   db "[kernel] image ok", 10, 0
