@@ -643,6 +643,7 @@ shell_commands:
     shell_command "resume", cmd_resume, "resume a paused task: resume <id>"
     shell_command "step", cmd_step, "run one instruction of a paused task"
     shell_command "dis", cmd_dis, "disassemble: dis <0xaddr|label> [count]"
+    shell_command "why", cmd_why, "who drew a pixel: why <x> <y>"
     shell_command "glass", cmd_glass, "watch a task live: glass [task id] [0xaddr|label], or glass patch"
     shell_command "break", cmd_break, "pause the task that runs it: break <0xaddr|label>"
     shell_command "syms", sym_dump, "dump the symbol table"
