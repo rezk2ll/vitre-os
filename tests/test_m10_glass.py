@@ -166,3 +166,18 @@ def test_task_view_pauses_and_steps():
         vm.wait_screen(r"RIP= (?!" + rip + r")[0-9a-f]{16}")
         vm.sendkeys("q")
         vm.wait_for(PROMPT, start=pos)
+
+
+def test_patch_view_shows_both_versions():
+    with Vm("m10_patch_view") as vm:
+        pos = vm.wait_for(SHELL_READY).end()
+        out, pos = run(vm, "glass patch", pos)
+        if "no live patch" not in out:
+            raise TestFailure(f"glass patch before any patch: {out!r}")
+        out, pos = run(vm, "patch kernel/report.asm", pos)
+        vm.sendkeys("glass patch\n")
+        vm.wait_screen(r"jt 0x[0-9a-f]+  0x[0-9a-f]+ <\w+>  was 0x1[0-9a-f]+")
+        vm.wait_screen(r"old code +new code")
+        vm.press("down")
+        vm.sendkeys("q")
+        vm.wait_for(PROMPT, start=pos)
